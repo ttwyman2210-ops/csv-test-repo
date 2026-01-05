@@ -1,0 +1,9 @@
+import sys
+
+# This will print the path to the python executable currently being used
+print(f"Current Python path: {sys.executable}")
+
+if ".venv" in sys.executable:
+    print("Nice! You are officially running inside your virtual environment.")
+else:
+    print("You are not")
