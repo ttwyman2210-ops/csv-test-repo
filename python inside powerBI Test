@@ -1,0 +1,23 @@
+import pandas as pd
+import requests
+import io
+
+# 1. Fetch the data
+url = "https://raw.githubusercontent.com/ttwyman2210-ops/csv-test-repo/refs/heads/main/Test_Sheet1.csv"
+response = requests.get(url)
+
+# 2. Initial Load
+demo = pd.read_csv(io.StringIO(response.text))
+
+# 3. Data Cleaning and Slicing
+# Power BI needs this as a clean table
+subset = demo.iloc[8:18, [1, 4]].copy()
+subset.columns = ['DNS', 'Severity']
+subset['Severity'] = pd.to_numeric(subset['Severity'])
+
+# 4. Optional: Pre-calculate the Standard Deviation and Mean as columns 
+# This makes it much easier to create the "Normal Zone" in Power BI visuals
+subset['Mean_Severity'] = subset['Severity'].mean()
+subset['Std_Dev'] = subset['Severity'].std()
+
+# Power BI will look for the 'subset' variable and treat it as the output table
