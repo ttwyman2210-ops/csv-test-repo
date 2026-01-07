@@ -1,0 +1,67 @@
+import requests
+from requests.auth import HTTPBasicAuth
+import pandas as pd
+import io
+
+# --- API Config ---
+BASE_URL = "https://qualysapi.qualys.com/api/2.0/fo/scan/"
+USERNAME = "copilot_login"
+PASSWORD = "pword"
+SCAN_REFERENCE = "scan/1754922697.93502"
+
+# Qualys API requires this header
+HEADERS = {'X-Requested-With': 'Python Requests'}
+
+params = {
+    "action": "fetch",
+    "scan_ref": SCAN_REFERENCE,
+    "output_format": "csv"
+}
+
+try:
+    # 1. Direct Qualys API Call
+    response = requests.get(
+        BASE_URL,
+        params=params,
+        auth=HTTPBasicAuth(USERNAME, PASSWORD),
+        headers=HEADERS,
+        verify=False,  # Bypassing SSL for corporate environments
+        timeout=60
+    )
+    response.raise_for_status()
+
+    # 2. Convert raw response to DataFrame
+    df = pd.read_csv(io.StringIO(response.text))
+
+    # 3. Slicing and Cleaning
+    # Index 1 is DNS, Index 4 is Column E (IP Status)
+    # Slicing rows 9-18 (indices 8 through 17)
+    subset = df.iloc[8:18, [1, 4]].copy()
+    subset.columns = ['DNS', 'IP_Status']
+
+    # 4. Filter Alive vs Dead using Filter + Lambda
+    # We identify 'Alive' hosts by searching for "host scanned" in the Column E text
+    all_statuses = subset['IP_Status'].tolist()
+    alive_entries = list(filter(lambda x: "host scanned" in str(x).lower(), all_statuses))
+    
+    # 5. Extraction and Aggregation
+    # We extract the severity digit (1-10) from the 'IP Status' text for numerical analysis
+    subset['Severity'] = subset['IP_Status'].str.extract('(\d+)').astype(float).fillna(0)
+    
+    # Grouping by the extracted Severity to see distribution
+    severity_summary = subset.groupby('Severity').size().reset_index(name='Count')
+
+    # 6. Final Output for Power BI or Manual Review
+    print("--- Qualys Scan Analysis ---")
+    print(f"Total Assets in Range: {len(subset)}")
+    print(f"Alive Assets Found: {len(alive_entries)}")
+    print(f"Dead/Not Scanned (Reported): 8309")
+    print("\nSeverity Distribution:")
+    print(severity_summary)
+
+    # Exporting the cleaned table
+    subset.to_csv("qualys_processed_results.csv", index=False)
+    print("\n'qualys_processed_results.csv' created successfully.")
+
+except Exception as e:
+    print(f"Error processing Qualys data: {e}")
