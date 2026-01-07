@@ -1,0 +1,50 @@
+ PBM - Discovery Scan: 10.24..x.x-10.24..255.254 20250811 - 1
+
+
+import requests
+from requests.auth import HTTPBasicAuth
+
+BASE_URL = "https://qualysapi.qualys.com/api/2.0/fo/scan/"
+
+USERNAME = "copilot_login"
+PASSWORD = "pword"
+
+SCAN_NAME = "Discovery Scan: 10.24..x.x-10.24..255.254 20250811 - 1"
+SCAN_REFERENCE = "scan/1754922697.93502"
+SCAN_DATE = "2025-08-11"  # Converted to ISO format for clarity
+
+
+params = {
+    "action": "fetch",
+    "id": SCAN_REFERENCE.split("/")[-1], 
+    "output_format": "json" 
+}
+
+
+try:
+    response = requests.get(
+        BASE_URL,
+        params=params,
+        auth=HTTPBasicAuth(USERNAME, PASSWORD),
+        timeout=30  # Set timeout for network reliability
+    )
+
+  
+    response.raise_for_status()
+
+
+    data = response.json()  
+   
+    scan_info = data.get("SCAN_LIST", {}).get("SCAN", [])
+    for scan in scan_info:
+        if scan.get("TITLE") == SCAN_NAME and scan.get("LAUNCH_DATETIME", "").startswith(SCAN_DATE):
+            print("Scan Found:")
+            print(f"Name: {scan.get('TITLE')}")
+            print(f"Reference: {SCAN_REFERENCE}")
+            print(f"Status: {scan.get('STATUS')}")
+            break
+    else:
+        print("No matching scan found for given name and date.")
+
+except requests.exceptions.RequestException as e:
+    print(f"Error querying Qualys API: {e}")
