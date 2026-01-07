@@ -1,0 +1,66 @@
+import requests
+from requests.auth import HTTPBasicAuth
+import pandas as pd
+import io
+
+# --- Qualys API Config ---
+BASE_URL = "https://qualysapi.qualys.com/api/2.0/fo/scan/"
+USERNAME = "copilot_login"
+PASSWORD = "pword"
+SCAN_REFERENCE = "scan/1754922697.93502"
+
+# Qualys requires this header for API 2.0
+HEADERS = {'X-Requested-With': 'Python Requests'}
+
+params = {
+    "action": "fetch",
+    "scan_ref": SCAN_REFERENCE,
+    "output_format": "csv"
+}
+
+try:
+    # 1. Fetch data directly from Qualys API (SSL Verification is ON)
+    response = requests.get(
+        BASE_URL,
+        params=params,
+        auth=HTTPBasicAuth(USERNAME, PASSWORD),
+        headers=HEADERS,
+        verify=True,
+        timeout=60
+    )
+    response.raise_for_status()
+
+    # 2. Load the raw CSV response into a DataFrame
+    df = pd.read_csv(io.StringIO(response.text))
+
+    # 3. Slice the data: DNS (Col B / Index 1) and IP Status (Col E / Index 4)
+    # Target range: E8:656 translates to index 7 through 656 (exclusive)
+    subset = df.iloc[7:656, [1, 4]].copy()
+    subset.columns = ['DNS', 'IP_Status']
+
+    # 4. Contextualizing Alive vs Dead using filter() + lambda
+    # Logic: Identify 'Alive' based on "host scanned"
+    all_statuses = subset['IP_Status'].tolist()
+    alive_hosts = list(filter(lambda x: "host scanned" in str(x).lower(), all_statuses))
+    
+    # 5. Extraction and Aggregation
+    # Extracts the 1-10 numeric severity from the text in Column E
+    subset['Severity'] = subset['IP_Status'].str.extract('(\d+)').astype(float).fillna(0)
+    
+    # Grouping by the extracted Severity to see the distribution
+    severity_distribution = subset.groupby('Severity').size().reset_index(name='Count')
+
+    # 6. Final Console Output
+    print("--- Qualys Scan Analysis (Range E8:656) ---")
+    print(f"Total Assets in Scanned Range: {len(subset)}")
+    print(f"Alive Assets (Found Vuln): {len(alive_hosts)}")
+    print(f"Dead Hosts (Not Scanned): 8309")
+    print("\nSeverity Distribution (Active Assets):")
+    print(severity_distribution)
+
+    # 7. Export to CSV for Power BI Consumption
+    subset.to_csv("qualys_processed_results.csv", index=False)
+    print("\nExported: 'qualys_processed_results.csv'")
+
+except Exception as e:
+    print(f"Error during execution: {e}")
