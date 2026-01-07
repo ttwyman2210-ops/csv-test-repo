@@ -1,0 +1,70 @@
+import pandas as pd
+import requests
+import io
+import sys
+import urllib3
+
+# Suppress the 'InsecureRequestWarning' that appears when verify=False
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# --- 1. CONFIGURATION & FETCHING ---
+url = "https://raw.githubusercontent.com/ttwyman2210-ops/csv-test-repo/refs/heads/main/Scan_Results_20260107_scan_1754922697_93502.csv"
+
+try:
+    # verify=False bypasses the SSL certificate verification hurdles
+    response = requests.get(url, verify=False, timeout=30)
+    response.raise_for_status()
+    
+    if len(response.text) < 100:
+        raise ValueError("The received file is too small. Check the GitHub URL/Permissions.")
+except Exception as e:
+    print(f"BLOCK 1 ERROR (Fetching): {e}")
+    sys.exit()
+
+# --- 2. DATA LOADING ---
+try:
+    raw_df = pd.read_csv(io.StringIO(response.text))
+    if raw_df.empty:
+        raise ValueError("The CSV was loaded but contains no data.")
+except Exception as e:
+    print(f"BLOCK 2 ERROR (Loading): {e}")
+    sys.exit()
+
+# --- 3. SLICING & CLEANING ---
+try:
+    # Target Range: E8:656 (Indices 7:656)
+    # Col B (1) = DNS, Col E (4) = IP Status
+    subset = raw_df.iloc[7:656, [1, 4]].copy()
+    subset.columns = ['DNS', 'IP_Status']
+except Exception as e:
+    print(f"BLOCK 3 ERROR (Slicing): {e}")
+    sys.exit()
+
+# --- 4. ALIVE VS DEAD LOGIC (LAMBDA) ---
+try:
+    # Identify 'Alive' entries containing "host scanned"
+    subset['Is_Alive'] = subset['IP_Status'].apply(lambda x: "host scanned" in str(x).lower())
+    
+    # Extract numeric severity (1-10)
+    subset['Severity'] = subset['IP_Status'].str.extract('(\d+)').astype(float).fillna(0)
+except Exception as e:
+    print(f"BLOCK 4 ERROR (Filtering): {e}")
+    sys.exit()
+
+# --- 5. STATISTICAL ANALYSIS ---
+try:
+    active_assets = subset[subset['Is_Alive'] == True]
+    
+    subset['Mean_Severity'] = active_assets['Severity'].mean()
+    subset['Std_Dev'] = active_assets['Severity'].std()
+    subset['Total_Dead_Reported'] = 8309 
+    
+    # Fill any calculation errors with 0 to prevent Power BI load failure
+    subset['Mean_Severity'] = subset['Mean_Severity'].fillna(0)
+    subset['Std_Dev'] = subset['Std_Dev'].fillna(0)
+except Exception as e:
+    print(f"BLOCK 5 ERROR (Analysis): {e}")
+    sys.exit()
+
+# Final output for Power BI Navigator
+final_output = subset.copy()
