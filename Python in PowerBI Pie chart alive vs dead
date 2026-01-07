@@ -1,0 +1,41 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Power BI automatically creates a 'dataset' variable
+# representing the fields you dragged into the visual.
+df = dataset
+
+# 1. Processing the 'Alive' vs 'Dead' counts from the existing dataset
+# Identifying entries containing "host scanned"
+alive_count = len(df[df['IP_Status'].apply(lambda x: "host scanned" in str(x).lower())])
+
+# Note: Since the '8309' dead hosts aren't in your CSV rows, we add them manually
+dead_count = 8309 
+
+# 2. PIE CHART VISUALIZATION
+labels = ['Alive (Found Vuln)', 'Dead (Not Scanned)']
+sizes = [alive_count, dead_count]
+colors = ['#4CAF50', '#FF5252'] # Green and Red
+explode = (0.1, 0) # Highlight the Alive slice
+
+# Create the figure
+fig, ax = plt.subplots(figsize=(8, 6))
+
+ax.pie(sizes, 
+        explode=explode, 
+        labels=labels, 
+        colors=colors, 
+        autopct='%1.1f%%', 
+        shadow=True, 
+        startangle=140,
+        textprops={'fontsize': 12})
+
+plt.title('Vulnerability Scan Coverage: Alive vs. Dead', fontsize=16, fontweight='bold')
+plt.axis('equal') 
+
+# Adding the counts to the legend for better data digestion
+plt.legend(loc="lower right", labels=[f'Alive: {alive_count}', f'Dead: {dead_count}'])
+
+# Critical step for Power BI: You must call plt.show()
+plt.tight_layout()
+plt.show()
