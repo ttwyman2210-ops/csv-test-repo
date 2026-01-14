@@ -4,7 +4,6 @@ import requests
 import os
 from getpass import getpass
 import pandas as pd
-import io
 
 # --- 1. SSL & CREDENTIALS ---
 cert_path = certifi.where()
@@ -29,12 +28,12 @@ print(f"[*] Starting full extraction for tag: {TAG_NAME}...")
 # --- 2. PAGINATED FETCH LOOP ---
 try:
     while has_more:
-        # We use 'id' operator 'GREATER' to fetch the next batch of 100
+        # We ensure last_id is always a number (Long) for the API
         search_xml = f"""
         <ServiceRequest>
             <filters>
                 <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
-                <Criteria field="id" operator="GREATER">{last_id}</Criteria>
+                <Criteria field="id" operator="GREATER">{int(last_id)}</Criteria>
             </filters>
             <responseOptions>
                 <includeFields>agentInfo.lastCheckedIn,name,address,os,id</includeFields>
@@ -56,7 +55,6 @@ try:
         response.raise_for_status()
         data = response.json()
 
-        # Extract the list of hosts from this specific batch
         batch = data.get('ServiceResponse', {}).get('data', [])
         
         if not batch:
@@ -64,13 +62,21 @@ try:
         else:
             all_records.extend(batch)
             
-            # Find the ID of the last asset in this batch to use as the starting point for the next
-            # We look deep into the JSON: batch -> hostAsset -> id
-            last_id = batch[-1].get('hostAsset', {}).get('id')
+            # SAFE ID EXTRACTION: 
+            # We check both common locations for the ID in the JSON response
+            last_item = batch[-1]
+            if 'id' in last_item:
+                last_id = last_item['id']
+            elif 'hostAsset' in last_item and 'id' in last_item['hostAsset']:
+                last_id = last_item['hostAsset']['id']
+            else:
+                print("[!] Error: Could not find ID in response batch. Stopping to avoid loop.")
+                has_more = False
+                break
             
             print(f"[*] Fetched {len(all_records)} assets so far... (Last ID: {last_id})")
             
-            # If Qualys returns fewer than 100, we've hit the end of the list
+            # If we got fewer than 100, we've reached the very last page
             if len(batch) < 100:
                 has_more = False
 
@@ -78,25 +84,22 @@ try:
     if all_records:
         df = pd.json_normalize(all_records)
         
-        # We perform the date conversion so Power BI has a clean column to work with,
-        # but we do NOT filter the rows out.
+        # Format the date for Power BI but keep all rows
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
         if date_col:
             df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
-            print(f"[*] Processed {date_col} for Power BI formatting.")
 
-        # Save EVERY asset found to the CSV
         output_file = 'qualys_assets_for_pbi.csv'
         df.to_csv(output_file, index=False)
         
         print("-" * 30)
         print(f"[+] TOTAL EXPORTED: {len(df)} assets")
-        print(f"[+] Saved to: {os.path.abspath(output_file)}")
+        print(f"[+] File saved to project directory as: {output_file}")
         print("-" * 30)
     else:
-        print("[!] No assets were found with that tag.")
+        print("[!] No assets found with that tag.")
 
 except requests.exceptions.HTTPError as e:
-    print(f"[!] Qualys API rejected request: {response.text}")
+    print(f"[!] Qualys API Error: {response.text}")
 except Exception as e:
     print(f"[!] Script Error: {e}")
