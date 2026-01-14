@@ -28,7 +28,7 @@ print(f"[*] Starting full extraction for tag: {TAG_NAME}...")
 # --- 2. PAGINATED FETCH LOOP ---
 try:
     while has_more:
-        # We ensure last_id is always a number (Long) for the API
+        # We ensure last_id is an integer for the XML payload
         search_xml = f"""
         <ServiceRequest>
             <filters>
@@ -62,44 +62,37 @@ try:
         else:
             all_records.extend(batch)
             
-            # SAFE ID EXTRACTION: 
-            # We check both common locations for the ID in the JSON response
+            # --- IMPROVED SAFE ID EXTRACTION ---
             last_item = batch[-1]
-            if 'id' in last_item:
-                last_id = last_item['id']
-            elif 'hostAsset' in last_item and 'id' in last_item['hostAsset']:
-                last_id = last_item['hostAsset']['id']
+            
+            # Check multiple possible JSON paths for the asset ID
+            # 1. Root level 'id'
+            # 2. Inside 'hostAsset' object
+            # 3. Inside 'HostAsset' (case-sensitive variant)
+            possible_id = (
+                last_item.get('id') or 
+                last_item.get('hostAsset', {}).get('id') or 
+                last_item.get('HostAsset', {}).get('id')
+            )
+
+            if possible_id is not None:
+                last_id = possible_id
+                print(f"[*] Fetched {len(all_records)} assets so far... (Current ID: {last_id})")
             else:
-                print("[!] Error: Could not find ID in response batch. Stopping to avoid loop.")
+                # If we fail to find the ID, print keys to help debug the JSON structure
+                print(f"[!] ID not found in batch. Keys present: {list(last_item.keys())}")
                 has_more = False
                 break
             
-            print(f"[*] Fetched {len(all_records)} assets so far... (Last ID: {last_id})")
-            
-            # If we got fewer than 100, we've reached the very last page
+            # If Qualys sends less than 100, we have reached the end of the collection
             if len(batch) < 100:
                 has_more = False
 
-    # --- 3. EXPORT ALL DATA ---
+    # --- 3. DATA PROCESSING & EXPORT ---
     if all_records:
         df = pd.json_normalize(all_records)
         
-        # Format the date for Power BI but keep all rows
+        # Standardize the date column for Power BI
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
         if date_col:
-            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
-
-        output_file = 'qualys_assets_for_pbi.csv'
-        df.to_csv(output_file, index=False)
-        
-        print("-" * 30)
-        print(f"[+] TOTAL EXPORTED: {len(df)} assets")
-        print(f"[+] File saved to project directory as: {output_file}")
-        print("-" * 30)
-    else:
-        print("[!] No assets found with that tag.")
-
-except requests.exceptions.HTTPError as e:
-    print(f"[!] Qualys API Error: {response.text}")
-except Exception as e:
-    print(f"[!] Script Error: {e}")
+            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt
