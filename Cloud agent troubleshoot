@@ -32,7 +32,7 @@ TAG_NAME = 'Retail Store Prod Deployment 2025'
 DAYS_SINCE_CHECKIN = 30  
 
 # --- 4. THE SEARCH CRITERIA (XML) ---
-# Added <preferences> to increase the limit from 100 to 1000
+# preferences MUST be the first child of ServiceRequest for many Qualys pods
 search_xml = f"""
 <ServiceRequest>
     <preferences>
@@ -66,33 +66,13 @@ try:
         hosts = data['ServiceResponse']['data']
         df = pd.json_normalize(hosts)
 
+        # --- DIAGNOSTIC COUNT ---
+        total_retrieved = len(df)
+        print(f"[*] API returned {total_retrieved} total assets for this tag.")
+
         # --- 5. DYNAMIC COLUMN PICKER ---
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
 
         if date_col:
-            print(f"[*] Found date field: {date_col}")
-            
             # Convert to datetime and remove timezone for filtering
-            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
-            
-            # Calculate the cutoff date
-            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
-            
-            # Perform the filter
-            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff_date].copy()
-
-            # --- 6. SAVE FOR POWER BI ---
-            output_file = 'qualys_assets_for_pbi.csv'
-            df_filtered.to_csv(output_file, index=False)
-            print(f"[+] Success! {len(df_filtered)} assets found and exported to {output_file}.")
-        else:
-            print("[!] Warning: 'lastCheckedIn' field not found in response.")
-            df.to_csv('qualys_assets_raw_debug.csv', index=False)
-            print("[*] Saved raw output to 'qualys_assets_raw_debug.csv' for inspection.")
-    else:
-        print("[!] No data returned. Check if the Tag Name is exactly correct.")
-
-except requests.exceptions.HTTPError as e:
-    print(f"[!] API Error ({response.status_code}): {response.text}")
-except Exception as e:
-    print(f"[!] Script Error: {e}")
+            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize
