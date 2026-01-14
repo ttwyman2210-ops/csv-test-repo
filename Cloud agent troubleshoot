@@ -6,12 +6,11 @@ from getpass import getpass
 import pandas as pd
 import io
 
-# --- 1. SSL CERTIFICATE CONFIGURATION ---
+# --- SSL & CREDENTIALS ---
 cert_path = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = cert_path
 os.environ["SSL_CERT_FILE"] = cert_path
 
-# --- 2. CREDENTIALS & CONFIG ---
 username = input("Enter your Qualys username: ")
 password = getpass("Enter your Qualys password: ")
 
@@ -19,79 +18,64 @@ BASE_URL = "https://qualysapi.qg4.apps.qualys.com"
 ENDPOINT = "/qps/rest/2.0/search/am/hostasset"
 api_endpoint = f"{BASE_URL}{ENDPOINT}"
 
-HEADERS = {
-    "X-Requested-With": "Python",
-    "Content-Type": "text/xml",
-    "Accept": "application/json"
-}
-
 TAG_NAME = 'Retail Store Prod Deployment 2025'
 DAYS_SINCE_CHECKIN = 30  
 
-all_hosts = []
-last_id = 0
-has_more = True
-
-print(f"[*] Starting paginated fetch for tag: {TAG_NAME}...")
+# --- THE "FORCE ALL" XML ---
+# We use lastId=0 to signal a start-to-finish fetch
+# and limitResultSize=1000 to try and push the buffer.
+search_xml = f"""
+<ServiceRequest>
+    <preferences>
+        <limitResultSize>1000</limitResultSize>
+    </preferences>
+    <filters>
+        <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
+    </filters>
+    <responseOptions>
+        <includeFields>agentInfo.lastCheckedIn,name,address,os</includeFields>
+    </responseOptions>
+</ServiceRequest>
+"""
 
 try:
-    while has_more:
-        # Use 'id' operator 'GREATER' to paginate through results
-        # This is the most reliable way to get past the 100-record cap
-        search_xml = f"""
-        <ServiceRequest>
-            <filters>
-                <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
-                <Criteria field="id" operator="GREATER">{last_id}</Criteria>
-            </filters>
-            <responseOptions>
-                <includeFields>agentInfo.lastCheckedIn,name,address,os,id</includeFields>
-            </responseOptions>
-        </ServiceRequest>
-        """
+    print(f"[*] Fetching ALL assets for tag: {TAG_NAME}...")
+    
+    response = requests.post(
+        api_endpoint,
+        auth=(username, password),
+        headers={
+            "X-Requested-With": "Python",
+            "Content-Type": "text/xml",
+            "Accept": "application/json"
+        },
+        data=search_xml,
+        timeout=120
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        response = requests.post(
-            api_endpoint,
-            auth=(username, password),
-            headers=HEADERS,
-            data=search_xml,
-            timeout=60
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        batch = data.get('ServiceResponse', {}).get('data', [])
+    if 'ServiceResponse' in data and 'data' in data['ServiceResponse']:
+        hosts = data['ServiceResponse']['data']
+        df = pd.json_normalize(hosts)
         
-        if not batch:
-            has_more = False
-        else:
-            all_hosts.extend(batch)
-            # Update last_id to the ID of the last asset in this batch
-            last_id = batch[-1].get('hostAsset', {}).get('id')
-            print(f"[*] Retrieved {len(all_hosts)} assets so far...")
-            
-            # If we got fewer than 100, we've reached the end
-            if len(batch) < 100:
-                has_more = False
+        print(f"[*] Success! API returned {len(df)} assets.")
 
-    if all_hosts:
-        df = pd.json_normalize(all_hosts)
-        print(f"[+] Total assets retrieved from API: {len(df)}")
-
-        # --- 3. DYNAMIC COLUMN PICKER & FILTER ---
+        # --- DYNAMIC DATE FILTER ---
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
-
         if date_col:
             df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
-            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
-            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff_date].copy()
-
-            output_file = 'qualys_assets_for_pbi.csv'
-            df_filtered.to_csv(output_file, index=False)
-            print(f"[+] Final count after {DAYS_SINCE_CHECKIN}-day filter: {len(df_filtered)}")
-            print(f"[+] File saved: {output_file}")
-    else:
-        print("[!] No assets found for that tag.")
-
+            cutoff = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
+            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff].copy()
+            
+            df_filtered.to_csv('qualys_assets_for_pbi.csv', index=False)
+            print(f"[+] {len(df_filtered)} assets saved to CSV.")
+        else:
+            df.to_csv('qualys_assets_for_pbi.csv', index=False)
+            print("[!] Date field not found; saved all retrieved records instead.")
+            
+except requests.exceptions.HTTPError as e:
+    # This will print the EXACT reason Qualys rejected the request
+    print(f"[!] API Error: {response.text}")
 except Exception as e:
-    print(f"[!] Error during pagination: {e}")
+    print(f"[!] Script Error: {e}")
