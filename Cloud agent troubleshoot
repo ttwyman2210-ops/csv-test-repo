@@ -28,7 +28,6 @@ print(f"[*] Starting deep extraction for tag: {TAG_NAME}...")
 # --- 2. PAGINATED FETCH LOOP ---
 try:
     while has_more:
-        # We increase limitResultSize to 1000 to try and pull bigger chunks
         search_xml = f"""
         <ServiceRequest>
             <preferences>
@@ -60,14 +59,13 @@ try:
 
         batch = data.get('ServiceResponse', {}).get('data', [])
         
-        # If the batch is empty, we are definitively at the end
-        if not batch:
+        if not batch or len(batch) == 0:
             print("[*] No more records returned by API.")
             has_more = False
         else:
             all_records.extend(batch)
             
-            # Extract ID from the last item in the batch
+            # Extract ID from the last item
             last_item = batch[-1]
             possible_id = (
                 last_item.get('id') or 
@@ -77,21 +75,27 @@ try:
 
             if possible_id is not None:
                 last_id = possible_id
-                print(f"[*] Batch size: {len(batch)} | Total retrieved: {len(all_records)} | Last ID: {last_id}")
+                print(f"[*] Batch: {len(batch)} | Total Raw: {len(all_records)} | Current ID: {last_id}")
             else:
-                print("[!] Could not find ID. Stopping to prevent infinite loop.")
+                has_more = False
+            
+            # If the batch is smaller than the requested limit, we've reached the end
+            if len(batch) < 1000:
                 has_more = False
 
-            # We ONLY stop if the batch is completely empty. 
-            # If Qualys sends 9 assets, it usually means the end, but we'll check one more time just in case.
-            if len(batch) == 0:
-                has_more = False
-
-    # --- 3. EXPORT ALL DATA ---
+    # --- 3. DEDUPLICATION & EXPORT ---
     if all_records:
         df = pd.json_normalize(all_records)
         
-        # Date conversion for Power BI
+        # Identify the ID column (it might be 'id' or 'hostAsset.id')
+        id_col = next((c for c in df.columns if c.endswith('.id') or c == 'id'), None)
+        
+        if id_col:
+            initial_count = len(df)
+            df.drop_duplicates(subset=[id_col], inplace=True)
+            print(f"[*] Deduplication: Removed {initial_count - len(df)} duplicate entries.")
+
+        # Date formatting for Power BI
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
         if date_col:
             df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
@@ -100,13 +104,9 @@ try:
         df.to_csv(output_file, index=False)
         
         print("-" * 30)
-        print(f"[+] TOTAL EXPORTED: {len(df)} assets")
+        print(f"[+] TOTAL UNIQUE ASSETS: {len(df)}")
         print(f"[+] File saved to: {os.path.abspath(output_file)}")
         print("-" * 30)
-        
-        if len(df) < 120: # If it's still lower than expected
-            print("[?] Note: If the UI shows more assets, check if some assets have multiple tags ")
-            print("    or if 'Retail Store Prod Deployment 2025' is a parent tag.")
     else:
         print("[!] No assets found.")
 
