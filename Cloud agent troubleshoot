@@ -23,14 +23,17 @@ all_records = []
 last_id = 0
 has_more = True
 
-print(f"[*] Starting full extraction for tag: {TAG_NAME}...")
+print(f"[*] Starting deep extraction for tag: {TAG_NAME}...")
 
 # --- 2. PAGINATED FETCH LOOP ---
 try:
     while has_more:
-        # We ensure last_id is an integer for the XML payload
+        # We increase limitResultSize to 1000 to try and pull bigger chunks
         search_xml = f"""
         <ServiceRequest>
+            <preferences>
+                <limitResultSize>1000</limitResultSize>
+            </preferences>
             <filters>
                 <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
                 <Criteria field="id" operator="GREATER">{int(last_id)}</Criteria>
@@ -57,18 +60,15 @@ try:
 
         batch = data.get('ServiceResponse', {}).get('data', [])
         
+        # If the batch is empty, we are definitively at the end
         if not batch:
+            print("[*] No more records returned by API.")
             has_more = False
         else:
             all_records.extend(batch)
             
-            # --- IMPROVED SAFE ID EXTRACTION ---
+            # Extract ID from the last item in the batch
             last_item = batch[-1]
-            
-            # Check multiple possible JSON paths for the asset ID
-            # 1. Root level 'id'
-            # 2. Inside 'hostAsset' object
-            # 3. Inside 'HostAsset' (case-sensitive variant)
             possible_id = (
                 last_item.get('id') or 
                 last_item.get('hostAsset', {}).get('id') or 
@@ -77,26 +77,24 @@ try:
 
             if possible_id is not None:
                 last_id = possible_id
-                print(f"[*] Fetched {len(all_records)} assets so far... (Current ID: {last_id})")
+                print(f"[*] Batch size: {len(batch)} | Total retrieved: {len(all_records)} | Last ID: {last_id}")
             else:
-                # If we fail to find the ID, print keys to help debug the JSON structure
-                print(f"[!] ID not found in batch. Keys present: {list(last_item.keys())}")
-                has_more = False
-                break
-            
-            # If Qualys sends less than 100, we have reached the end of the collection
-            if len(batch) < 100:
+                print("[!] Could not find ID. Stopping to prevent infinite loop.")
                 has_more = False
 
-    # --- 3. DATA PROCESSING & EXPORT ---
+            # We ONLY stop if the batch is completely empty. 
+            # If Qualys sends 9 assets, it usually means the end, but we'll check one more time just in case.
+            if len(batch) == 0:
+                has_more = False
+
+    # --- 3. EXPORT ALL DATA ---
     if all_records:
         df = pd.json_normalize(all_records)
         
-        # Standardize the date column for Power BI
+        # Date conversion for Power BI
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
         if date_col:
             df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
-            print(f"[*] Date formatting applied to column: {date_col}")
 
         output_file = 'qualys_assets_for_pbi.csv'
         df.to_csv(output_file, index=False)
@@ -105,12 +103,12 @@ try:
         print(f"[+] TOTAL EXPORTED: {len(df)} assets")
         print(f"[+] File saved to: {os.path.abspath(output_file)}")
         print("-" * 30)
+        
+        if len(df) < 120: # If it's still lower than expected
+            print("[?] Note: If the UI shows more assets, check if some assets have multiple tags ")
+            print("    or if 'Retail Store Prod Deployment 2025' is a parent tag.")
     else:
-        print("[!] No assets found for that tag. Please verify the tag name in the Qualys console.")
+        print("[!] No assets found.")
 
-except requests.exceptions.HTTPError as e:
-    print(f"[!] Qualys API Error ({response.status_code}): {response.text}")
 except Exception as e:
-    print(f"[!] Script Error: {e}")
-finally:
-    print("[*] Process Complete.")
+    print(f"[!] Error: {e}")
