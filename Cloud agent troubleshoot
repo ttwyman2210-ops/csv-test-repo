@@ -6,7 +6,7 @@ from getpass import getpass
 import pandas as pd
 import io
 
-# --- SSL & CREDENTIALS ---
+# --- 1. SSL & CREDENTIALS ---
 cert_path = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = cert_path
 os.environ["SSL_CERT_FILE"] = cert_path
@@ -19,63 +19,84 @@ ENDPOINT = "/qps/rest/2.0/search/am/hostasset"
 api_endpoint = f"{BASE_URL}{ENDPOINT}"
 
 TAG_NAME = 'Retail Store Prod Deployment 2025'
-DAYS_SINCE_CHECKIN = 30  
 
-# --- THE "FORCE ALL" XML ---
-# We use lastId=0 to signal a start-to-finish fetch
-# and limitResultSize=1000 to try and push the buffer.
-search_xml = f"""
-<ServiceRequest>
-    <preferences>
-        <limitResultSize>1000</limitResultSize>
-    </preferences>
-    <filters>
-        <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
-    </filters>
-    <responseOptions>
-        <includeFields>agentInfo.lastCheckedIn,name,address,os</includeFields>
-    </responseOptions>
-</ServiceRequest>
-"""
+all_records = []
+last_id = 0
+has_more = True
 
+print(f"[*] Starting full extraction for tag: {TAG_NAME}...")
+
+# --- 2. PAGINATED FETCH LOOP ---
 try:
-    print(f"[*] Fetching ALL assets for tag: {TAG_NAME}...")
-    
-    response = requests.post(
-        api_endpoint,
-        auth=(username, password),
-        headers={
-            "X-Requested-With": "Python",
-            "Content-Type": "text/xml",
-            "Accept": "application/json"
-        },
-        data=search_xml,
-        timeout=120
-    )
-    response.raise_for_status()
-    data = response.json()
+    while has_more:
+        # We use 'id' operator 'GREATER' to fetch the next batch of 100
+        search_xml = f"""
+        <ServiceRequest>
+            <filters>
+                <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
+                <Criteria field="id" operator="GREATER">{last_id}</Criteria>
+            </filters>
+            <responseOptions>
+                <includeFields>agentInfo.lastCheckedIn,name,address,os,id</includeFields>
+            </responseOptions>
+        </ServiceRequest>
+        """
 
-    if 'ServiceResponse' in data and 'data' in data['ServiceResponse']:
-        hosts = data['ServiceResponse']['data']
-        df = pd.json_normalize(hosts)
+        response = requests.post(
+            api_endpoint,
+            auth=(username, password),
+            headers={
+                "X-Requested-With": "Python",
+                "Content-Type": "text/xml",
+                "Accept": "application/json"
+            },
+            data=search_xml,
+            timeout=120
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Extract the list of hosts from this specific batch
+        batch = data.get('ServiceResponse', {}).get('data', [])
         
-        print(f"[*] Success! API returned {len(df)} assets.")
+        if not batch:
+            has_more = False
+        else:
+            all_records.extend(batch)
+            
+            # Find the ID of the last asset in this batch to use as the starting point for the next
+            # We look deep into the JSON: batch -> hostAsset -> id
+            last_id = batch[-1].get('hostAsset', {}).get('id')
+            
+            print(f"[*] Fetched {len(all_records)} assets so far... (Last ID: {last_id})")
+            
+            # If Qualys returns fewer than 100, we've hit the end of the list
+            if len(batch) < 100:
+                has_more = False
 
-        # --- DYNAMIC DATE FILTER ---
+    # --- 3. EXPORT ALL DATA ---
+    if all_records:
+        df = pd.json_normalize(all_records)
+        
+        # We perform the date conversion so Power BI has a clean column to work with,
+        # but we do NOT filter the rows out.
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
         if date_col:
             df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
-            cutoff = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
-            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff].copy()
-            
-            df_filtered.to_csv('qualys_assets_for_pbi.csv', index=False)
-            print(f"[+] {len(df_filtered)} assets saved to CSV.")
-        else:
-            df.to_csv('qualys_assets_for_pbi.csv', index=False)
-            print("[!] Date field not found; saved all retrieved records instead.")
-            
+            print(f"[*] Processed {date_col} for Power BI formatting.")
+
+        # Save EVERY asset found to the CSV
+        output_file = 'qualys_assets_for_pbi.csv'
+        df.to_csv(output_file, index=False)
+        
+        print("-" * 30)
+        print(f"[+] TOTAL EXPORTED: {len(df)} assets")
+        print(f"[+] Saved to: {os.path.abspath(output_file)}")
+        print("-" * 30)
+    else:
+        print("[!] No assets were found with that tag.")
+
 except requests.exceptions.HTTPError as e:
-    # This will print the EXACT reason Qualys rejected the request
-    print(f"[!] API Error: {response.text}")
+    print(f"[!] Qualys API rejected request: {response.text}")
 except Exception as e:
     print(f"[!] Script Error: {e}")
