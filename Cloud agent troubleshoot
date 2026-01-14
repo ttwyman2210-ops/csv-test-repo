@@ -1,4 +1,4 @@
-# !/usr/bin/env python3
+#!/usr/bin/env python3
 import certifi
 import requests
 import os
@@ -6,64 +6,91 @@ from getpass import getpass
 import pandas as pd
 import io
 
+# --- SSL CERTIFICATE CONFIGURATION ---
 cert_path = certifi.where()
-
 os.environ["REQUESTS_CA_BUNDLE"] = cert_path
 os.environ["SSL_CERT_FILE"] = cert_path
 
 print(f"[*] Using certifi bundle at: {cert_path}")
 
-# --- Prompt for credentials and scan reference ---
+# --- CREDENTIALS ---
 username = input("Enter your Qualys username: ")
 password = getpass("Enter your Qualys password: ")
-# --- API details ---
-BASE_URL = "https://qualysapi.qg4.apps.qualys.com/"
-HEADERS = {"X-Requested-With": "Python"}
+
+# --- API CONFIGURATION ---
+# Base URL should not have a trailing slash to avoid double-slashes in endpoint
+BASE_URL = "https://qualysapi.qg4.apps.qualys.com"
+ENDPOINT = "/qps/rest/2.0/search/am/hostasset"
+api_endpoint = f"{BASE_URL}{ENDPOINT}"
+
+# Qualys QPS API requires these headers
+HEADERS = {
+    "X-Requested-With": "Python",
+    "Content-Type": "text/xml",
+    "Accept": "application/json"
+}
+
 TAG_NAME = 'Retail Store Prod Deployment 2025'
-DAYS_SINCE_CHECKIN = 30  # For filtering logic
+DAYS_SINCE_CHECKIN = 30  
 
 # --- THE SEARCH CRITERIA (XML) ---
-# This looks for Cloud Agents with your tag
 search_xml = f"""
 <ServiceRequest>
     <filters>
         <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
-        <Criteria field="agentInfo.status" operator="EQUALS">ACTIVE</Criteria>
     </filters>
 </ServiceRequest>
 """
 
-# --- THE API CALL ---
-api_endpoint = f"{BASE_URL}qps/rest/2.0/search/am/hostasset"
-
 try:
     print(f"[*] Fetching assets with tag: {TAG_NAME}...")
+    print(f"[*] Connecting to: {api_endpoint}")
+    
     response = requests.post(
         api_endpoint,
         auth=(username, password),
-        headers={'Content-Type': 'text/xml', 'Accept': 'application/json'},
-        data=search_xml
+        headers=HEADERS,
+        data=search_xml,
+        timeout=60
     )
     response.raise_for_status()
 
-    # Parse results
+    # Parse JSON results
     data = response.json()
-    hosts = data['ServiceResponse']['data']
+    
+    # Navigate the Qualys JSON structure
+    if 'ServiceResponse' in data and 'data' in data['ServiceResponse']:
+        hosts = data['ServiceResponse']['data']
+        
+        # Flatten JSON to a Pandas DataFrame
+        df = pd.json_normalize(hosts)
 
-    # Flatten JSON to a Pandas DataFrame
-    df = pd.json_normalize(hosts)
+        # --- FILTER BY DATE ---
+        # Note: We use .get() or check columns to avoid errors if the field is missing
+        date_col = 'hostAsset.agentInfo.lastCheckedIn'
+        if date_col in df.columns:
+            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col])
 
-    # --- FILTER BY DATE ---
-    # Convert 'lastCheckedIn' to a real date object
-    df['lastCheckedIn'] = pd.to_datetime(df['hostAsset.agentInfo.lastCheckedIn'])
+            # Filter for agents seen in the last X days
+            cutoff_date = pd.Timestamp.now(tz='UTC') # Match timezone-aware strings from API
+            # Note: If API returns offset-naive, use pd.Timestamp.now()
+            
+            # Simple version if timezone issues occur:
+            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
+            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
+            
+            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff_date].copy()
 
-    # Example: Only keep agents seen in the last 30 days
-    cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
-    df_filtered = df[df['lastCheckedIn'] >= cutoff_date]
+            # --- SAVE FOR POWER BI ---
+            df_filtered.to_csv('qualys_assets_for_pbi.csv', index=False)
+            print(f"[+] Success! {len(df_filtered)} assets exported to CSV.")
+        else:
+            print("[!] Warning: 'lastCheckedIn' field not found in API response.")
+            df.to_csv('qualys_assets_raw.csv', index=False)
+    else:
+        print("[!] No data returned in ServiceResponse.")
 
-    # --- SAVE FOR POWER BI ---
-    df_filtered.to_csv('qualys_assets_for_pbi.csv', index=False)
-    print(f"[+] Success! {len(df_filtered)} assets exported to CSV.")
-
+except requests.exceptions.HTTPError as e:
+    print(f"[!] API Error ({response.status_code}): {response.text}")
 except Exception as e:
-    print(f"[!] Error: {e}")
+    print(f"[!] Script Error: {e}")
