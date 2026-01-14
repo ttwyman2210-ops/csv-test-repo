@@ -7,7 +7,6 @@ import pandas as pd
 import io
 
 # --- 1. SSL CERTIFICATE CONFIGURATION ---
-# This ensures Python uses the cert bundle where you added your corporate proxy cert
 cert_path = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = cert_path
 os.environ["SSL_CERT_FILE"] = cert_path
@@ -33,9 +32,12 @@ TAG_NAME = 'Retail Store Prod Deployment 2025'
 DAYS_SINCE_CHECKIN = 30  
 
 # --- 4. THE SEARCH CRITERIA (XML) ---
-# includeFields ensures Qualys sends the agent check-in data back
+# Added <preferences> to increase the limit from 100 to 1000
 search_xml = f"""
 <ServiceRequest>
+    <preferences>
+        <limitResultSize>1000</limitResultSize>
+    </preferences>
     <filters>
         <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
     </filters>
@@ -58,44 +60,21 @@ try:
     )
     response.raise_for_status()
 
-    # Parse JSON results
     data = response.json()
     
     if 'ServiceResponse' in data and 'data' in data['ServiceResponse']:
         hosts = data['ServiceResponse']['data']
-        
-        # Flatten the nested JSON into a clean table
         df = pd.json_normalize(hosts)
 
         # --- 5. DYNAMIC COLUMN PICKER ---
-        # Look for any column containing 'lastCheckedIn' (handles different JSON nesting)
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
 
         if date_col:
             print(f"[*] Found date field: {date_col}")
             
-            # Convert to datetime and remove timezone for easier filtering
+            # Convert to datetime and remove timezone for filtering
             df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
             
             # Calculate the cutoff date
             cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
             
-            # Perform the filter
-            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff_date].copy()
-
-            # --- 6. SAVE FOR POWER BI ---
-            output_file = 'qualys_assets_for_pbi.csv'
-            df_filtered.to_csv(output_file, index=False)
-            print(f"[+] Success! {len(df_filtered)} assets exported to {output_file}.")
-        else:
-            print("[!] Warning: 'lastCheckedIn' field not found in response.")
-            print(f"[*] Available fields found: {list(df.columns[:10])}...")
-            df.to_csv('qualys_assets_raw_debug.csv', index=False)
-            print("[*] Saved raw output to 'qualys_assets_raw_debug.csv' for inspection.")
-    else:
-        print("[!] No data returned. Check if the Tag Name is exactly correct.")
-
-except requests.exceptions.HTTPError as e:
-    print(f"[!] API Error ({response.status_code}): {response.text}")
-except Exception as e:
-    print(f"[!] Script Error: {e}")
