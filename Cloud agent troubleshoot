@@ -95,4 +95,22 @@ try:
         # Standardize the date column for Power BI
         date_col = next((c for c in df.columns if 'lastCheckedIn' in c), None)
         if date_col:
-            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt
+            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
+            print(f"[*] Date formatting applied to column: {date_col}")
+
+        output_file = 'qualys_assets_for_pbi.csv'
+        df.to_csv(output_file, index=False)
+        
+        print("-" * 30)
+        print(f"[+] TOTAL EXPORTED: {len(df)} assets")
+        print(f"[+] File saved to: {os.path.abspath(output_file)}")
+        print("-" * 30)
+    else:
+        print("[!] No assets found for that tag. Please verify the tag name in the Qualys console.")
+
+except requests.exceptions.HTTPError as e:
+    print(f"[!] Qualys API Error ({response.status_code}): {response.text}")
+except Exception as e:
+    print(f"[!] Script Error: {e}")
+finally:
+    print("[*] Process Complete.")
