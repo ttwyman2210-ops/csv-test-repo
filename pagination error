@@ -1,0 +1,1 @@
+[!] Qualys API rejected request: {"ServiceResponse":{"responseErrorDetails":{"errorResolution":"Specify criteria value(s) as Long.","errorMessage":"Criteria: Invalid value format for criteria 'id' (None)."},"responseCode":"INVALID_REQUEST"}}
