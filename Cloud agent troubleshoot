@@ -75,4 +75,29 @@ try:
 
         if date_col:
             # Convert to datetime and remove timezone for filtering
-            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize
+            df['lastCheckedIn_DT'] = pd.to_datetime(df[date_col]).dt.tz_localize(None)
+            
+            # Calculate the cutoff date
+            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
+            
+            # Perform the filter
+            df_filtered = df[df['lastCheckedIn_DT'] >= cutoff_date].copy()
+
+            # --- 6. SAVE FOR POWER BI ---
+            output_file = 'qualys_assets_for_pbi.csv'
+            df_filtered.to_csv(output_file, index=False)
+            print(f"[+] Success! {len(df_filtered)} out of {total_retrieved} assets passed the {DAYS_SINCE_CHECKIN}-day filter.")
+            print(f"[+] File saved: {output_file}")
+        else:
+            print("[!] Warning: 'lastCheckedIn' field not found in response.")
+            df.to_csv('qualys_assets_raw_debug.csv', index=False)
+            print("[*] Saved raw output to 'qualys_assets_raw_debug.csv' for header inspection.")
+    else:
+        print("[!] No data returned. Check if the Tag Name is exactly correct.")
+
+except requests.exceptions.HTTPError as e:
+    print(f"[!] API Error ({response.status_code}): {response.text}")
+except Exception as e:
+    print(f"[!] Script Error: {e}")
+finally:
+    print("[*] Script execution finished.")
