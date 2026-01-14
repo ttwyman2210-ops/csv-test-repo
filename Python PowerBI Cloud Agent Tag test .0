@@ -1,0 +1,57 @@
+import requests
+import pandas as pd
+import io
+
+# --- CONFIGURATION ---
+USERNAME = 'your_username'
+PASSWORD = 'your_password'
+# Your Qualys platform URL (e.g., https://qualysapi.qualys.com)
+BASE_URL = 'https://qualysapi.qg2.apps.qualys.com' 
+TAG_NAME = 'test_tag'
+DAYS_SINCE_CHECKIN = 30 # For filtering logic
+
+# --- THE SEARCH CRITERIA (XML) ---
+# This looks for Cloud Agents with your tag
+search_xml = f"""
+<ServiceRequest>
+    <filters>
+        <Criteria field="tagName" operator="EQUALS">{TAG_NAME}</Criteria>
+        <Criteria field="agentInfo.status" operator="EQUALS">ACTIVE</Criteria>
+    </filters>
+</ServiceRequest>
+"""
+
+# --- THE API CALL ---
+api_endpoint = f"{BASE_URL}/qps/rest/2.0/search/am/hostasset"
+
+try:
+    print(f"[*] Fetching assets with tag: {TAG_NAME}...")
+    response = requests.post(
+        api_endpoint,
+        auth=(USERNAME, PASSWORD),
+        headers={'Content-Type': 'text/xml', 'Accept': 'application/json'},
+        data=search_xml
+    )
+    response.raise_for_status()
+    
+    # Parse results
+    data = response.json()
+    hosts = data['ServiceResponse']['data']
+    
+    # Flatten JSON to a Pandas DataFrame
+    df = pd.json_normalize(hosts)
+    
+    # --- FILTER BY DATE ---
+    # Convert 'lastCheckedIn' to a real date object
+    df['lastCheckedIn'] = pd.to_datetime(df['hostAsset.agentInfo.lastCheckedIn'])
+    
+    # Example: Only keep agents seen in the last 30 days
+    cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=DAYS_SINCE_CHECKIN)
+    df_filtered = df[df['lastCheckedIn'] >= cutoff_date]
+
+    # --- SAVE FOR POWER BI ---
+    df_filtered.to_csv('qualys_assets_for_pbi.csv', index=False)
+    print(f"[+] Success! {len(df_filtered)} assets exported to CSV.")
+
+except Exception as e:
+    print(f"[!] Error: {e}")
