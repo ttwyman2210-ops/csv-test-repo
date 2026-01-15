@@ -1,0 +1,10 @@
+Qualys Error Message: <?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE SIMPLE_RETURN SYSTEM "https://qualysapi.qg4.apps.qualys.com/api/5.0/simple_return.dtd">
+<SIMPLE_RETURN>
+  <RESPONSE>
+    <DATETIME>2026-01-15T20:07:01Z</DATETIME>
+    <CODE>2000</CODE>
+    <TEXT>Bad Login/Password</TEXT>
+  </RESPONSE>
+</SIMPLE_RETURN>
+
