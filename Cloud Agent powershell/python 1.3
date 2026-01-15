@@ -1,0 +1,97 @@
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# --- Prompt for credentials (Basic Auth) ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+# --- Headers: Note 'Accept' is set to text/csv to handle the output format ---
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+    "Accept"           = "text/csv"
+}
+
+# --- Configuration ---
+$TagName = "Retail Store Prod Deployment 2025"
+$DaysThreshold = 30
+$DateThreshold = (Get-Date).AddDays(-$DaysThreshold).ToString("yyyy-MM-dd")
+
+# --- Base URL (Updated to 5.0 to avoid EOL warning) ---
+$BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
+
+# --- Build query string ---
+$qs = "action=list" +
+      "&use_tags=1" +
+      "&tag_include_selector=any" +
+      "&tag_set_by=name" +
+      "&tag_set_include=$([uri]::EscapeDataString($TagName))" +
+      "&vm_scan_since=$([uri]::EscapeDataString($DateThreshold))"
+
+$Uri = "$BaseUrl`?$qs"
+
+# --- Resolve Local Path (Downloads) ---
+try {
+    $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+} catch {
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
+$OutputCsv = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+Write-Host "Connecting to Qualys API v5.0..." -ForegroundColor Cyan
+Write-Host "Filtering for Tag: $TagName" -ForegroundColor Gray
+Write-Host "Filtering for assets scanned since: $DateThreshold" -ForegroundColor Gray
+
+# --- API Request ---
+try {
+    # Using OutFile to stream the CSV response directly to your local machine
+    $resp = Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $OutputCsv -UseBasicParsing
+
+    if (Test-Path $OutputCsv) {
+        # Qualys CSVs often have a few lines of metadata at the top. 
+        # We'll count the rows to give you the total asset count.
+        $csvContent = Import-Csv -Path $OutputCsv -ErrorAction SilentlyContinue
+        
+        if ($csvContent) {
+            $totalAssets = $csvContent.Count
+        } else {
+            # Fallback if CSV format is unusual (e.g. metadata header prevents standard import)
+            $rawLines = Get-Content $OutputCsv
+            # Matches lines that likely contain host data (starting with an IP or ID)
+            $dataLines = $rawLines | Where-Object { $_ -match '^\d{1,3}\.' -or $_ -match '^"\d{1,3}\.' }
+            $totalAssets = ($dataLines | Measure-Object).Count
+        }
+
+        Write-Host "`nSuccess! Document stored at: $OutputCsv" -ForegroundColor Green
+        Write-Host "--------------------------------------------------" -ForegroundColor Gray
+        Write-Host "Total Assets Retrieved: " -NoNewline
+        Write-Host "$totalAssets" -ForegroundColor Yellow -Bold
+        Write-Host "--------------------------------------------------" -ForegroundColor Gray
+        Write-Host "Your Power BI Python script can now consume this file." -ForegroundColor White
+    }
+}
+catch {
+    Write-Host "`nError downloading data." -ForegroundColor Red
+    # Display the specific error from Qualys if possible
+    if ($_.Exception.Response) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        $errDetails = $reader.ReadToEnd()
+        Write-Host "Qualys Error Message: $errDetails" -ForegroundColor Yellow
+    } else {
+        Write-Host "General Exception: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+finally {
+    $encodedCreds = $null
+}
