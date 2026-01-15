@@ -28,12 +28,14 @@ $DateThreshold = (Get-Date).AddDays(-$DaysThreshold).ToString("yyyy-MM-dd")
 
 # --- Base URL and Query ---
 $BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/2.0/fo/asset/host/"
+# --- Build query string ---
+# Removed vm_scan_since temporarily to see if it clears the 400 error
+# Changed tag_set_by to 'id' if 'name' fails, but keeping name for now with adjusted selector
 $qs = "action=list" +
       "&use_tags=1" +
       "&tag_include_selector=any" +
       "&tag_set_by=name" +
-      "&tag_set_include=$([uri]::EscapeDataString($TagName))" +
-      "&vm_scan_since=$([uri]::EscapeDataString($DateThreshold))" +
+      "&tag_set_include=$([uri]::EscapeDataString('Retail Store Prod Deployment 2025'))" +
       "&output_format=csv"
 
 $Uri = "$BaseUrl`?$qs"
