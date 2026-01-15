@@ -1,0 +1,106 @@
+<#
+  Qualys VM: Fetch Scan Results (CSV Extended)
+  - Pod: QG4 only (hardcoded)
+  - Auth: Basic (username + secure password -> base64 header)
+  - Input: scan_ref (e.g., scan/1754922697.93502)
+  - Output: CSV saved to current user's Downloads
+  - PS compatibility: Windows PowerShell 5.1+
+#>
+
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# --- Prompt for credentials (Basic Auth) ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+# Convert SecureString to plaintext JUST long enough to build header, then zero/cleanup
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+    Accept           = "text/csv"
+}
+
+# --- Prompt for scan reference ---
+$scanRef = Read-Host 'Enter scan reference (e.g., scan/1754922697.93502)'
+if ([string]::IsNullOrWhiteSpace($scanRef)) {
+    Write-Warning "No scan reference provided. Exiting."
+    return
+}
+
+# --- Base URL (QG4 pod) ---
+$BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/2.0/fo/scan/"
+
+# --- Build query string (GET) ---
+$qs = "action=fetch" +
+      "&scan_ref=$([uri]::EscapeDataString($scanRef))" +
+      "&output_format=csv_extended" +
+      "&mode=extended"
+
+$Uri = "$BaseUrl`?$qs"
+
+# --- Resolve current user's Downloads folder robustly ---
+try {
+    $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+} catch {
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
+if (-not (Test-Path -LiteralPath $DownloadsPath)) {
+    New-Item -ItemType Directory -Path $DownloadsPath -ErrorAction SilentlyContinue | Out-Null
+}
+
+# --- Dynamic filename (sanitize scan_ref) ---
+$sanitized = ($scanRef -replace '[\\/:"*?<>|]+','_')
+$OutputCsv = Join-Path $DownloadsPath "Qualys_Scan_${sanitized}.csv"
+
+Write-Host "Downloading scan results for $scanRef ..." -ForegroundColor Cyan
+
+# --- GET and save to file ---
+try {
+    # Use Invoke-WebRequest to stream to file; UseBasicParsing for PS 5.1
+    $resp = Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $OutputCsv -UseBasicParsing
+
+    # Basic content-type sanity check (optional)
+    if ($resp.Headers.'Content-Type' -and ($resp.Headers.'Content-Type' -notmatch 'csv|text/plain')) {
+        Write-Warning "Response content-type: $($resp.Headers.'Content-Type'). File saved, but this may be an error payload."
+    }
+
+    Write-Host "Scan results saved as:" -NoNewline
+    Write-Host " $OutputCsv" -ForegroundColor Green
+}
+catch {
+    # Try to show HTTP status + first error text if available
+    $status = $null
+    $desc   = $null
+    $resp   = $_.Exception.Response
+    if ($resp) {
+        $status = [int]$resp.StatusCode
+        $desc   = $resp.StatusDescription
+    }
+    Write-Host "Error downloading scan results." -ForegroundColor Yellow
+    if ($status) { Write-Host "HTTP $status $desc" }
+    # If a partial file exists and it's XML (error), surface a snippet for quick triage
+    if (Test-Path -LiteralPath $OutputCsv) {
+        try {
+            $snippet = (Get-Content -LiteralPath $OutputCsv -TotalCount 20) -join "`n"
+            Write-Host "Response snippet:"
+            Write-Host $snippet
+        } catch { }
+        # Optionally remove the file if it's not CSV
+        # Remove-Item -LiteralPath $OutputCsv -Force -ErrorAction SilentlyContinue
+    }
+}
+finally {
+    # Clean up sensitive header
+    $encodedCreds = $null
