@@ -1,0 +1,91 @@
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# --- Prompt for credentials ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+# --- Headers ---
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+    "Accept"           = "text/csv"
+}
+
+# --- Configuration ---
+$TargetTag = "Retail Store Prod Deployment 2025"
+$BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
+
+# --- Build broad query string ---
+# We use 'any' to ensure we get results, and 'show_tags' so we can filter locally.
+$qs = "action=list" +
+      "&use_tags=1" +
+      "&show_tags=1" +
+      "&tag_set_by=name" +
+      "&tag_include_selector=any" +
+      "&tag_set_include=$([uri]::EscapeDataString($TargetTag))"
+
+$Uri = "$BaseUrl`?$qs"
+
+# --- Resolve Local Path ---
+try {
+    $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+} catch {
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
+$OutputCsv = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+Write-Host "Fetching and filtering assets for: $TargetTag" -ForegroundColor Cyan
+
+# --- API Request ---
+try {
+    # 1. Download the raw data
+    $resp = Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -UseBasicParsing
+    
+    # 2. Parse the CSV content from the response
+    $rawCsv = $resp.Content | ConvertFrom-Csv
+
+    if ($rawCsv) {
+        # 3. Apply the precise filter locally
+        # This looks for the exact tag name in the 'Tags' column
+        $filteredData = $rawCsv | Where-Object { $_.Tags -like "*$TargetTag*" }
+        
+        $totalCount = ($filteredData | Measure-Object).Count
+
+        if ($totalCount -gt 0) {
+            # 4. Save only the relevant assets to your local file
+            $filteredData | Export-Csv -Path $OutputCsv -NoTypeInformation
+            
+            Write-Host "`nSuccess! Document stored at: $OutputCsv" -ForegroundColor Green
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Total Assets with Tag: " -NoNewline
+            Write-Host "$totalCount" -ForegroundColor Yellow -Bold
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+        } else {
+            Write-Warning "API call succeeded but no assets were found with the tag: $TargetTag"
+            # Optional: save the raw response for debugging if count is 0
+            $resp.Content | Out-File (Join-Path $DownloadsPath "Qualys_Debug_Raw.csv")
+        }
+    }
+}
+catch {
+    Write-Host "`nError connecting to Qualys." -ForegroundColor Red
+    if ($_.Exception.Response) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        Write-Host "Qualys Error: $($reader.ReadToEnd())" -ForegroundColor Yellow
+    }
+}
+finally {
+    $encodedCreds = $null
+}
