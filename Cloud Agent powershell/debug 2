@@ -1,0 +1,11 @@
+<!-- API EOS Warning: This API Path "https://qualysapi.qg4.apps.qualys.com/api/2.0/fo/asset/host/index.php" has reached End-of-Service (EOS) and will be EOL in 165 days. Please use new API path "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/index.php". //-->
+
+<!DOCTYPE SIMPLE_RETURN SYSTEM "https://qualysapi.qg4.apps.qualys.com/api/2.0/simple_return.dtd">
+<SIMPLE_RETURN>
+  <RESPONSE>
+    <DATETIME>2026-01-15T19:52:15Z</DATETIME>
+    <CODE>1901</CODE>
+    <TEXT>Unrecognized parameter(s): output_format (action=list allows: echo_request, ips, ipv6, ids, id_min, id_max, details, queued_for_purge, ag_ids, ag_titles, os_pattern, network_ids, truncation_limit, show_tags, show_asse
+t_id, host_metadata, host_metadata_fields, show_cloud_tags, cloud_tag_fields, show_ars, show_ars_factors, ars_min, ars_max, show_trurisk, show_trurisk_factors, trurisk_min, trurisk_max, use_tags, tag_set_by, tag_include_selecto
+r, tag_exclude_selector, tag_set_include, tag_set_exclude, compliance_enabled, no_compliance_scan_since, compliance_scan_since, no_vm_scan_since, vm_scan_since, vm_processed_after, vm_processed_before, vm_scan_date_before, vm_scan_date_after, vm_auth_scan_date_before, vm_auth_scan_date_after)</TEXT>
+  </RESPONSE>
