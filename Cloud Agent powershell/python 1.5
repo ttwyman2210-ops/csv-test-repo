@@ -1,0 +1,91 @@
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# --- Prompt for credentials ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+# --- Headers ---
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+    "Accept"           = "text/csv"
+}
+
+# --- Configuration ---
+$TagName = "Retail Store Prod Deployment 2025"
+$DaysThreshold = 30
+$DateThreshold = (Get-Date).AddDays(-$DaysThreshold).ToString("yyyy-MM-dd")
+
+# --- Base URL ---
+$BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
+
+# --- Build query string (Using 'all' for strict filtering) ---
+$qs = "action=list" +
+      "&use_tags=1" +
+      "&tag_set_by=name" +
+      "&tag_include_selector=all" +
+      "&tag_set_include=$([uri]::EscapeDataString($TagName))" +
+      "&vm_scan_since=$([uri]::EscapeDataString($DateThreshold))" +
+      "&show_tags=1"
+
+$Uri = "$BaseUrl`?$qs"
+
+# --- Resolve Local Path ---
+try {
+    $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+} catch {
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
+$OutputCsv = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+Write-Host "Fetching assets for Tag: $TagName (Strict Mode)" -ForegroundColor Cyan
+
+# --- API Request ---
+try {
+    $resp = Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $OutputCsv -UseBasicParsing
+
+    if (Test-Path $OutputCsv) {
+        # Import data to verify exact count
+        $csvContent = Import-Csv -Path $OutputCsv -ErrorAction SilentlyContinue
+        
+        if ($csvContent) {
+            # SECONDARY SAFETY: Local filter to ensure ONLY the target tag is included
+            $filtered = $csvContent | Where-Object { $_.Tags -like "*$TagName*" }
+            
+            # Export the cleaned data back to the CSV
+            $filtered | Export-Csv -Path $OutputCsv -NoTypeInformation
+            $totalAssets = ($filtered | Measure-Object).Count
+
+            Write-Host "`nSuccess! Document stored at: $OutputCsv" -ForegroundColor Green
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Total Assets Retrieved: " -NoNewline
+            Write-Host "$totalAssets" -ForegroundColor Yellow -Bold
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Filtered locally to ensure exact tag match." -ForegroundColor Gray
+        } else {
+            Write-Warning "API returned successfully but file is empty or formatted incorrectly."
+        }
+    }
+}
+catch {
+    Write-Host "`nError downloading data." -ForegroundColor Red
+    if ($_.Exception.Response) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        Write-Host "Qualys Error: $($reader.ReadToEnd())" -ForegroundColor Yellow
+    }
+}
+finally {
+    $encodedCreds = $null
+}
