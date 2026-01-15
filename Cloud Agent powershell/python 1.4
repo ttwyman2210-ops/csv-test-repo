@@ -1,0 +1,98 @@
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# --- Prompt for credentials ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+# --- Headers ---
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+    "Accept"           = "text/csv"
+}
+
+# --- Configuration ---
+$TagName = "Retail Store Prod Deployment 2025"
+$DaysThreshold = 30
+$DateThreshold = (Get-Date).AddDays(-$DaysThreshold).ToString("yyyy-MM-dd")
+
+# --- Base URL ---
+$BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
+
+# --- Build REFINED query string ---
+# 1. tag_include_selector=matches: Forces the API to find an exact match for the tag set
+# 2. show_tags=1: Includes tag info in the CSV so we can verify if needed
+$qs = "action=list" +
+      "&use_tags=1" +
+      "&tag_set_by=name" +
+      "&tag_include_selector=matches" +
+      "&tag_set_include=$([uri]::EscapeDataString($TagName))" +
+      "&vm_scan_since=$([uri]::EscapeDataString($DateThreshold))" +
+      "&show_tags=1"
+
+$Uri = "$BaseUrl`?$qs"
+
+# --- Resolve Local Path ---
+try {
+    $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+} catch {
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
+$OutputCsv = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+Write-Host "Fetching EXACT assets for Tag: $TagName" -ForegroundColor Cyan
+
+# --- API Request ---
+try {
+    $resp = Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $OutputCsv -UseBasicParsing
+
+    if (Test-Path $OutputCsv) {
+        # Load data to count and verify
+        $csvContent = Import-Csv -Path $OutputCsv -ErrorAction SilentlyContinue
+        
+        if ($csvContent) {
+            # Secondary check: Filter locally in case the API was still too broad
+            # This ensures your Power BI script only gets the 159 expected assets
+            $filteredContent = $csvContent | Where-Object { $_.Tags -like "*$TagName*" }
+            
+            # If the API returned too much, overwrite the file with only the filtered results
+            if ($csvContent.Count -ne $filteredContent.Count) {
+                $filteredContent | Export-Csv -Path $OutputCsv -NoTypeInformation
+                $totalAssets = $filteredContent.Count
+                Write-Host "Note: Local filtering applied to match tag exactly." -ForegroundColor Gray
+            } else {
+                $totalAssets = $csvContent.Count
+            }
+
+            Write-Host "`nSuccess! Document stored at: $OutputCsv" -ForegroundColor Green
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Total Assets Retrieved: " -NoNewline
+            Write-Host "$totalAssets" -ForegroundColor Yellow -Bold
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+        } else {
+            Write-Warning "File was created but no CSV data was parsed. Check if the API returned an empty set."
+        }
+    }
+}
+catch {
+    Write-Host "`nError downloading data." -ForegroundColor Red
+    if ($_.Exception.Response) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        Write-Host "Qualys Error: $($reader.ReadToEnd())" -ForegroundColor Yellow
+    }
+}
+finally {
+    $encodedCreds = $null
+}
