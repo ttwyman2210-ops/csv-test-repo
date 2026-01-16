@@ -1,50 +1,58 @@
 import pandas as pd
 import datetime
 import os
-import io
+import csv
 
 # 1. Locate the file
 file_path = os.path.join(os.path.expanduser("~"), "Downloads", "Qualys_Retail_Assets_2025.csv")
 
 try:
-    # 2. Read as raw text to avoid "EOF" quote errors
+    data_rows = []
+    header = None
+
+    # 2. Manual Line Parsing to bypass EOF/Quote errors
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        lines = f.readlines()
+        # We use a custom generator to strip out quotes that cause the EOF hang
+        for line in f:
+            # Clean the line: remove leading/trailing whitespace and problematic quotes
+            clean_line = line.strip()
+            
+            # Skip XML/Metadata lines
+            if clean_line.startswith(('<?xml', '<!', '<SIMPLE', '<RESPONSE', '<DATETIME')):
+                continue
+            
+            # Use split manually to avoid the "EOF inside string" logic of pd.read_csv
+            # We split by comma but handle cases where values might have commas inside (if necessary)
+            parts = next(csv.reader([clean_line], skipinitialspace=True))
+            
+            if not header and 'LAST_ACTIVITY' in clean_line:
+                header = parts
+                continue
+            
+            if header and len(parts) == len(header):
+                data_rows.append(parts)
 
-    # 3. Clean the lines: Remove rows that are empty or clearly XML metadata
-    # We only keep rows that have commas and don't look like XML tags
-    clean_lines = [l for l in lines if ',' in l and not l.strip().startswith('<?xml') and not l.strip().startswith('<!DOCTYPE')]
+    # 3. Create DataFrame from the manually cleaned rows
+    df = pd.DataFrame(data_rows, columns=header)
 
-    # 4. Find the header row (the one containing 'LAST_ACTIVITY')
-    header_index = 0
-    for i, line in enumerate(clean_lines):
-        if 'LAST_ACTIVITY' in line:
-            header_index = i
-            break
-
-    # 5. Load only the clean data into Pandas
-    # Using quotechar=None or a dummy quotechar to prevent the "EOF" hanging quote issue
-    data_str = "".join(clean_lines[header_index:])
-    df = pd.read_csv(io.StringIO(data_str), sep=',', quoting=3) # quoting=3 means "Quote None"
-
-    # 6. Date Logic
-    # Convert to datetime, handling the ISO 8601 format
+    # 4. Date Logic
+    # Qualys format: 2026-01-15T23:52:27Z
     df['LAST_ACTIVITY'] = pd.to_datetime(df['LAST_ACTIVITY'], errors='coerce', utc=True)
     df = df.dropna(subset=['LAST_ACTIVITY'])
 
-    # 7. Identify "Silent" vs "Active" (24 Hour Window)
+    # 5. Identify "Silent" vs "Active" (24 Hour Window)
     now = datetime.datetime.now(datetime.timezone.utc)
     threshold_24h = now - datetime.timedelta(hours=24)
 
+    # Create the Status column for Power BI visuals
     df['Status'] = df['LAST_ACTIVITY'].apply(lambda x: 'Silent' if x < threshold_24h else 'Active')
 
-    # 8. Create a clean subset for Power BI
-    # Ensure columns exist before subsetting
-    cols_to_keep = [col for col in ['IP', 'DNS', 'LAST_ACTIVITY', 'Status'] if col in df.columns]
-    final_output = df[cols_to_keep].copy()
-
-    print(f"Success! Processed {len(final_output)} assets.")
-    print(final_output['Status'].value_counts())
+    # 6. Final Clean Output for Power BI
+    # Power BI requires a variable (usually 'df') to be the result
+    final_df = df.copy()
+    
+    print(f"Success! Filtered {len(final_df)} assets.")
+    print(final_df['Status'].value_counts())
 
 except Exception as e:
-    print(f"Critical Processing Error: {e}")
+    print(f"Manual Parsing Error: {e}")
