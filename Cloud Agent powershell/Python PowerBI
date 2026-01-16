@@ -7,43 +7,44 @@ import io
 file_path = os.path.join(os.path.expanduser("~"), "Downloads", "Qualys_Retail_Assets_2025.csv")
 
 try:
-    # 2. Robust Loading
-    # on_bad_lines='skip' ignores lines that don't match the column count (like the XML footer)
-    # engine='python' is slower but much better at handling the EOF error you saw
-    df = pd.read_csv(file_path, on_bad_lines='skip', engine='python')
+    # 2. Read as raw text to avoid "EOF" quote errors
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        lines = f.readlines()
 
-    # 3. Clean up the data
-    # Qualys files often have metadata rows at the top. 
-    # We find the real header by looking for 'IP' or 'ID' if the first load is messy
-    if 'LAST_ACTIVITY' not in df.columns:
-        # Fallback: find the row that contains 'LAST_ACTIVITY' and reload
-        with open(file_path, 'r') as f:
-            lines = f.readlines()
-            for i, line in enumerate(lines):
-                if 'LAST_ACTIVITY' in line:
-                    df = pd.read_csv(io.StringIO("".join(lines[i:])), on_bad_lines='skip')
-                    break
+    # 3. Clean the lines: Remove rows that are empty or clearly XML metadata
+    # We only keep rows that have commas and don't look like XML tags
+    clean_lines = [l for l in lines if ',' in l and not l.strip().startswith('<?xml') and not l.strip().startswith('<!DOCTYPE')]
 
-    # 4. Filter for Date Logic
-    # Convert 'LAST_ACTIVITY' to datetime (UTC)
+    # 4. Find the header row (the one containing 'LAST_ACTIVITY')
+    header_index = 0
+    for i, line in enumerate(clean_lines):
+        if 'LAST_ACTIVITY' in line:
+            header_index = i
+            break
+
+    # 5. Load only the clean data into Pandas
+    # Using quotechar=None or a dummy quotechar to prevent the "EOF" hanging quote issue
+    data_str = "".join(clean_lines[header_index:])
+    df = pd.read_csv(io.StringIO(data_str), sep=',', quoting=3) # quoting=3 means "Quote None"
+
+    # 6. Date Logic
+    # Convert to datetime, handling the ISO 8601 format
     df['LAST_ACTIVITY'] = pd.to_datetime(df['LAST_ACTIVITY'], errors='coerce', utc=True)
-    
-    # Drop rows where date failed to parse
     df = df.dropna(subset=['LAST_ACTIVITY'])
 
-    # 5. Calculate "Silent" Threshold (24 Hours)
+    # 7. Identify "Silent" vs "Active" (24 Hour Window)
     now = datetime.datetime.now(datetime.timezone.utc)
     threshold_24h = now - datetime.timedelta(hours=24)
 
-    # 6. Flag stale assets
     df['Status'] = df['LAST_ACTIVITY'].apply(lambda x: 'Silent' if x < threshold_24h else 'Active')
-    
-    # Final cleanup: Power BI likes clean dataframes
-    final_output = df[['IP', 'DNS', 'LAST_ACTIVITY', 'Status']].copy()
-    
-    # Summarize for console triage
-    print(f"Successfully processed {len(final_output)} assets.")
+
+    # 8. Create a clean subset for Power BI
+    # Ensure columns exist before subsetting
+    cols_to_keep = [col for col in ['IP', 'DNS', 'LAST_ACTIVITY', 'Status'] if col in df.columns]
+    final_output = df[cols_to_keep].copy()
+
+    print(f"Success! Processed {len(final_output)} assets.")
     print(final_output['Status'].value_counts())
 
 except Exception as e:
-    print(f"Error processing Qualys data: {e}")
+    print(f"Critical Processing Error: {e}")
