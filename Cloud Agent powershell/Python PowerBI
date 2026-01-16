@@ -1,1 +1,43 @@
-        <LAST_ACTIVITY>2026-01-15T23:52:27Z</LAST_ACTIVITY>
+import pandas as pd
+import datetime
+import os
+
+# 1. Locate the file in your Downloads folder
+# Note: Ensure this path matches exactly where your PowerShell script saved the file
+file_path = os.path.join(os.path.expanduser("~"), "Downloads", "Qualys_Retail_Assets_2025.csv")
+
+try:
+    # 2. Load the data
+    # Qualys CSVs sometimes contain metadata at the top; 
+    # if you get a parse error, you may need to add: skiprows=number_of_lines
+    df = pd.read_csv(file_path)
+
+    # 3. Convert 'LAST_ACTIVITY' to datetime objects
+    # Qualys uses ISO 8601 (2026-01-15T23:52:27Z). utc=True handles the 'Z' (Zulu/UTC)
+    df['LAST_ACTIVITY'] = pd.to_datetime(df['LAST_ACTIVITY'], utc=True)
+
+    # 4. Define our "Stale" threshold (24 hours ago from right now)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    threshold_24h = now - datetime.timedelta(hours=24)
+
+    # 5. Create a flag for assets that haven't reported in > 24 hours
+    # True = Stale (Silent), False = Active (Healthy)
+    df['Is_Stale_24h'] = df['LAST_ACTIVITY'] < threshold_24h
+
+    # 6. Separate the assets for analysis
+    stale_assets = df[df['Is_Stale_24h'] == True].copy()
+    active_assets = df[df['Is_Stale_24h'] == False].copy()
+
+    # Calculate statistics for the Power BI report summary
+    total_assets = len(df)
+    silent_count = len(stale_assets)
+    active_count = len(active_assets)
+
+    print(f"Total Assets: {total_assets}")
+    print(f"Active (Last 24h): {active_count}")
+    print(f"Silent (> 24h): {silent_count}")
+
+    # Power BI will consume the 'df' variable as the resulting table
+    # You can also use 'stale_assets' if you only want to visualize the outliers
+except Exception as e:
+    print(f"Error processing Qualys data: {e}")
