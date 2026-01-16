@@ -36,3 +36,19 @@ try {
             $data | Export-Csv $Out -NoTypeInformation
             Write-Host "Success! Data verified and cleaned." -ForegroundColor Green
             
+
+
+PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:25 char:25
++     if (Test-Path $Out) {
++                         ~
+Missing closing '}' in statement block or type definition.
+At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:21 char:5
++ try {
++     ~
+Missing closing '}' in statement block or type definition.
+At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:38 char:84
++ ... ite-Host "Success! Data verified and cleaned." -ForegroundColor Green
++                                                                          ~
+The Try statement is missing its Catch or Finally block.
+    + CategoryInfo          : ParserError: (:) [], ParseException
+    + FullyQualifiedErrorId : MissingEndCurlyBrace
