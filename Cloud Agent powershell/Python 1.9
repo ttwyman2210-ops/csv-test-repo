@@ -1,0 +1,93 @@
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ProgressPreference = 'SilentlyContinue'
+
+# --- Prompt for credentials ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+}
+
+# --- Configuration ---
+$TargetTagName = "Retail Store Prod Deployment 2025"
+# Note: Tagging API uses a different endpoint structure
+$TagBaseUrl = "https://qualysapi.qg4.apps.qualys.com/qps/rest/2.0/search/am/tag"
+
+Write-Host "`nStep 1: Verifying if tag '$TargetTagName' exists..." -ForegroundColor Cyan
+
+# --- STEP 1: VERIFY TAG EXISTS ---
+$tagSearchXml = @"
+<ServiceRequest>
+    <filters>
+        <Criteria field="name" operator="EQUALS">$TargetTagName</Criteria>
+    </filters>
+</ServiceRequest>
+"@
+
+try {
+    $tagCheck = Invoke-RestMethod -Uri $TagBaseUrl -Headers $Headers -Method Post -Body $tagSearchXml -ContentType "text/xml"
+    
+    $foundTag = $tagCheck.ServiceResponse.data.Tag
+    if (-not $foundTag) {
+        Write-Host "CRITICAL ERROR: Tag '$TargetTagName' was NOT found in Qualys." -ForegroundColor Red
+        Write-Host "Please check for typos or ensure the tag is created in the Qualys UI." -ForegroundColor Yellow
+        return
+    }
+
+    $TagId = $foundTag.id
+    Write-Host "Tag Found! Internal ID: $TagId" -ForegroundColor Green
+}
+catch {
+    Write-Host "Error connecting to Tagging API." -ForegroundColor Red
+    return
+}
+
+# --- STEP 2: FETCH ASSETS USING THE VALIDATED TAG ID ---
+Write-Host "`nStep 2: Fetching assets for Tag ID $TagId..." -ForegroundColor Cyan
+
+$AssetUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
+$qs = "action=list&use_tags=1&show_tags=1&tag_set_by=id&tag_set_include=$TagId"
+
+try {
+    try {
+        $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+    } catch {
+        $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+    }
+    $OutputFile = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+    # Streaming to disk with the 'Accept' header for CSV
+    $Headers.Add("Accept", "text/csv")
+    Invoke-WebRequest -Uri "$AssetUrl`?$qs" -Headers $Headers -Method Get -OutFile $OutputFile -UseBasicParsing
+
+    # Verify and Count
+    $data = Import-Csv -Path $OutputFile -ErrorAction SilentlyContinue
+    if ($data) {
+        $count = ($data | Measure-Object).Count
+        Write-Host "Success! Found $count assets." -ForegroundColor Green
+        Write-Host "File saved to: $OutputFile" -ForegroundColor Gray
+    } else {
+        Write-Warning "The tag exists, but no assets are currently assigned to it (or they haven't been scanned)."
+    }
+}
+catch {
+    Write-Host "Error fetching asset data." -ForegroundColor Red
+}
+finally {
+    $encodedCreds = $null
+    $ProgressPreference = 'Continue'
+}
