@@ -54,3 +54,16 @@ finally {
     $Creds = $null
     $ProgressPreference = 'Continue' 
 }
+
+
+
+Cannot convert argument "folder", with value: "Downloads", for "GetFolderPath" to type "System.Environment+SpecialFolder": "Cannot convert value "Downloads" to type "System.Environment+SpecialFolder". Error: "Unable to match 
+the identifier name Downloads to a valid enumerator name. Specify one of the following enumerator names and try again:
+Desktop, Programs, MyDocuments, Personal, Favorites, Startup, Recent, SendTo, StartMenu, MyMusic, MyVideos, DesktopDirectory, MyComputer, NetworkShortcuts, Fonts, Templates, CommonStartMenu, CommonPrograms, CommonStartup,      
+CommonDesktopDirectory, ApplicationData, PrinterShortcuts, LocalApplicationData, InternetCache, Cookies, History, CommonApplicationData, Windows, System, ProgramFiles, MyPictures, UserProfile, SystemX86, ProgramFilesX86,       
+CommonProgramFiles, CommonProgramFilesX86, CommonTemplates, CommonDocuments, CommonAdminTools, AdminTools, CommonMusic, CommonPictures, CommonVideos, Resources, LocalizedResources, CommonOemLinks, CDBurning""
+At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:16 char:1
++ $Out = Join-Path ([Environment]::GetFolderPath("Downloads")) "Qualys_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [], MethodException
+    + FullyQualifiedErrorId : MethodArgumentConversionInvalidCastArgument
