@@ -1,8 +1,7 @@
 # --- Setup and Credentials ---
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
-$User = Read-Host "Qualys Username"
-$Pass = Read-Host "Password" -AsSecureString
+$User = Read-Host "Qualys Username"; $Pass = Read-Host "Password" -AsSecureString
 $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Pass)
 $Plain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
 $Creds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${User}:${Plain}"))
@@ -12,47 +11,37 @@ $Creds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${User}:${Pl
 $Headers = @{ Authorization = "Basic $Creds"; "X-Requested-With" = "PS"; "Accept" = "text/csv" }
 $TagId = "26865192"
 $TagName = "Retail Store Prod Deployment 2025"
-$Uri = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/?action=list&use_tags=1&tag_set_by=id&tag_set_include=$TagId&show_tags=1"
+# Added show_tags=all and details=All/Full to force Qualys to include the metadata columns
+$Uri = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/?action=list&use_tags=1&tag_set_by=id&tag_set_include=$TagId&show_tags=all&details=All"
 
-# --- Restored Path Logic (The one that worked for you) ---
-$DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
-$Out = Join-Path $DownloadsPath "Qualys_Retail_Assets.csv"
+$Out = Join-Path $env:USERPROFILE 'Downloads\Qualys_Retail_Assets.csv'
 
-Write-Host "`nRequesting data for Tag ID: $TagId ..." -ForegroundColor Cyan
+Write-Host "`nRequesting data from Qualys..." -ForegroundColor Cyan
 
-# --- Execution ---
 try {
-    # 1. Download
     Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $Out -UseBasicParsing -TimeoutSec 120
 
     if (Test-Path $Out) {
-        # 2. Filtering logic to ensure we get exactly the assets for this tag
         $raw = Import-Csv $Out
+        
+        # --- ROBUST FILTER ---
+        # This checks EVERY column for the Tag Name or ID, just in case Qualys changed the header name
         $data = $raw | Where-Object { 
-            $_."Tag IDs" -like "*$TagId*" -or 
-            $_.Tag_IDs -like "*$TagId*" -or 
-            $_.Tags -like "*$TagName*" 
+            $line = $_ | Out-String
+            $line -like "*$TagName*" -or $line -like "*$TagId*"
         }
 
         $count = ($data | Measure-Object).Count
         
         if ($count -gt 0) {
-            # 3. Save verified assets only
             $data | Export-Csv $Out -NoTypeInformation
-            Write-Host "Success! Data verified and cleaned." -ForegroundColor Green
-            Write-Host "--------------------------------------------------" -ForegroundColor Gray
-            Write-Host "Total Assets with Tag ID ${TagId}: " -NoNewline
-            Write-Host "$count" -ForegroundColor Yellow -Bold
-            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Success! Data verified." -ForegroundColor Green
+            Write-Host "Total Assets with Tag: ${count}" -ForegroundColor Yellow -Bold
         } else {
-            Write-Warning "Filter returned 0 results. Check Tag ID: $TagId"
+            Write-Warning "Filter returned 0. The API might not be including Tag columns."
+            Write-Host "Available Columns in file: $(($raw[0] | Get-Member -MemberType NoteProperty).Name -join ', ')" -ForegroundColor Gray
         }
     }
 } 
-catch { 
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red 
-} 
-finally { 
-    $Creds = $null
-    $ProgressPreference = 'Continue' 
-}
+catch { Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red } 
+finally { $Creds = $null; $ProgressPreference = 'Continue' }
