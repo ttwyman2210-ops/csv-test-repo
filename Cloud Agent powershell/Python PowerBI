@@ -56,3 +56,31 @@ try:
 
 except Exception as e:
     print(f"Manual Parsing Error: {e}")
+
+
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE HOST_LIST_OUTPUT SYSTEM "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/dtd/list/output.dtd">
+<HOST_LIST_OUTPUT>
+  <RESPONSE>
+    <DATETIME>2026-01-16T13:42:39Z</DATETIME>
+    <HOST_LIST>
+      <HOST>
+        <ID>64509939</ID>
+        <IP>192.168.58.2</IP>
+        <TRACKING_METHOD>Cloud Agent</TRACKING_METHOD>
+        <NETWORK_ID>0</NETWORK_ID>
+        <DNS><![CDATA[s09195app.stores.cvs.com]]></DNS>
+        <DNS_DATA>
+          <HOSTNAME><![CDATA[s09195app]]></HOSTNAME>
+          <DOMAIN><![CDATA[stores.cvs.com]]></DOMAIN>
+          <FQDN><![CDATA[s09195app.stores.cvs.com]]></FQDN>
+        </DNS_DATA>
+        <OS><![CDATA[Ubuntu Linux 22.04.5]]></OS>
+        <QG_HOSTID><![CDATA[5f8dd604-aab5-477a-9696-9cc661931f45]]></QG_HOSTID>
+        <LAST_BOOT>2025-10-31T11:46:13Z</LAST_BOOT>
+        <SERIAL_NUMBER><![CDATA[MXQ053018Z]]></SERIAL_NUMBER>
+        <HARDWARE_UUID><![CDATA[37393150-3636-584d-5130-35333031385a]]></HARDWARE_UUID>
+        <FIRST_FOUND_DATE>2025-06-10T03:24:59Z</FIRST_FOUND_DATE>
+        <LAST_ACTIVITY>2026-01-16T00:10:47Z</LAST_ACTIVITY>
+        <AGENT_STATUS><![CDATA[Inventory Scan Complete]]></AGENT_STATUS>
+        <CLOUD_AGENT_RUNNING_ON><![CDATA[QAGENT]]></CLOUD_AGENT_RUNNING_ON>
