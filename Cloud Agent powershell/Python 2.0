@@ -1,7 +1,8 @@
 # --- Setup and Credentials ---
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
-$User = Read-Host "Qualys Username"; $Pass = Read-Host "Password" -AsSecureString
+$User = Read-Host "Qualys Username"
+$Pass = Read-Host "Password" -AsSecureString
 $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Pass)
 $Plain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
 $Creds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${User}:${Plain}"))
@@ -19,11 +20,12 @@ Write-Host "`nRequesting data for Tag ID: $TagId ..." -ForegroundColor Cyan
 # --- Execution ---
 try {
     # 1. Download full dataset to disk
-    Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $Out -UseBasicParsing -TimeoutSec 60
+    Invoke-WebRequest -Uri $Uri -Headers $Headers -OutFile $Out -UseBasicParsing -TimeoutSec 120
 
     if (Test-Path $Out) {
         $raw = Import-Csv $Out
-        # 2. Bulletproof filter: search for ID or Name in all common Qualys tag columns
+        
+        # 2. Bulletproof filter for exact Tag ID match
         $data = $raw | Where-Object { 
             $_."Tag IDs" -like "*$TagId*" -or 
             $_.Tag_IDs -like "*$TagId*" -or 
@@ -31,24 +33,24 @@ try {
         }
 
         $count = ($data | Measure-Object).Count
+        
         if ($count -gt 0) {
-            # 3. Clean and save verified assets
+            # 3. Save verified assets only
             $data | Export-Csv $Out -NoTypeInformation
             Write-Host "Success! Data verified and cleaned." -ForegroundColor Green
-            
-
-
-PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:25 char:25
-+     if (Test-Path $Out) {
-+                         ~
-Missing closing '}' in statement block or type definition.
-At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:21 char:5
-+ try {
-+     ~
-Missing closing '}' in statement block or type definition.
-At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:38 char:84
-+ ... ite-Host "Success! Data verified and cleaned." -ForegroundColor Green
-+                                                                          ~
-The Try statement is missing its Catch or Finally block.
-    + CategoryInfo          : ParserError: (:) [], ParseException
-    + FullyQualifiedErrorId : MissingEndCurlyBrace
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Total Assets with Tag ID ${TagId}: " -NoNewline
+            Write-Host "$count" -ForegroundColor Yellow -Bold
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+        } else {
+            Write-Warning "Filter returned 0 results. Check if assets are currently assigned to Tag ID $TagId"
+        }
+    }
+} 
+catch { 
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red 
+} 
+finally { 
+    $Creds = $null
+    $ProgressPreference = 'Continue' 
+}
