@@ -42,3 +42,15 @@ try {
     $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
 } catch {
     $Downloads
+
+
+\PycharmProjects\PythonProject\.venv\Scripts> .\Cloud_Agent.ps1
+At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:43 char:8
++ } catch }
++        ~
+The Catch block is missing its statement block.
+At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:43 char:9
++ } catch }
++         ~
+Unexpected token '}' in expression or statement.
+    + CategoryInfo          : ParserError: (:) [], ParseException
