@@ -28,9 +28,6 @@ $TargetTagId = "26865192"
 $BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
 
 # --- Build STRICT query string ---
-# tag_set_by=id: Targets the exact numeric ID
-# tag_include_selector=all: Strict matching
-# show_tags=1: Crucial for our local cleanup filter below
 $qs = "action=list" +
       "&use_tags=1" +
       "&tag_set_by=id" +
@@ -40,60 +37,8 @@ $qs = "action=list" +
 
 $Uri = "$BaseUrl`?$qs"
 
-# --- Resolve Local Path ---
+# --- Resolve Local Path (Downloads) ---
 try {
     $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
 } catch {
-    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
-}
-$OutputFile = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
-
-Write-Host "Requesting data for Tag ID: $TargetTagId from Qualys..." -ForegroundColor Cyan
-
-# --- API Request & Local Cleanup ---
-try {
-    # 1. Download directly to disk
-    Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $OutputFile -UseBasicParsing
-
-    # 2. Local Cleanup (The "7K to 139" fix)
-    if (Test-Path $OutputFile) {
-        Write-Host "Download complete. Verifying tag associations..." -ForegroundColor Gray
-        
-        # Import the data
-        $rawCsv = Import-Csv -Path $OutputFile -ErrorAction SilentlyContinue
-        
-        if ($rawCsv) {
-            # We filter for rows where the Tags column explicitly contains our numeric ID
-            # This removes any "overflow" assets the API might have included
-            $verifiedData = $rawCsv | Where-Object { $_.Tag_IDs -like "*$TargetTagId*" -or $_.Tags -like "*$TargetTagId*" }
-            
-            $finalCount = ($verifiedData | Measure-Object).Count
-            
-            # 3. Overwrite with only the 139 verified assets
-            $verifiedData | Export-Csv -Path $OutputFile -NoTypeInformation
-            
-            Write-Host "`nSuccess! Data cleaned and verified." -ForegroundColor Green
-            Write-Host "--------------------------------------------------" -ForegroundColor Gray
-            Write-Host "Total Assets with Tag ID $TargetTagId: " -NoNewline
-            Write-Host "$finalCount" -ForegroundColor Yellow -Bold
-            Write-Host "--------------------------------------------------" -ForegroundColor Gray
-        } else {
-            Write-Warning "File exists but no data was parsed. Check Qualys credentials or Tag ID."
-        }
-    }
-}
-catch {
-    Write-Host "`nError downloading or processing data." -ForegroundColor Red
-}
-finally {
-    $encodedCreds = $null
-    $ProgressPreference = 'Continue'
-}
-
-
-At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:77 char:50
-+ ...            Write-Host "Total Assets with Tag ID $TargetTagId: " -NoNe ...
-+                                                     ~~~~~~~~~~~~~
-Variable reference is not valid. ':' was not followed by a valid variable name character. Consider using ${} to delimit the name.
-    + CategoryInfo          : ParserError: (:) [], ParseException
-    + FullyQualifiedErrorId : InvalidVariableReferenceWithDrive
+    $Downloads
