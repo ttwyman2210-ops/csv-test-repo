@@ -56,3 +56,57 @@ try:
 
 except Exception as e:
     print(f"XML Parsing Error: {e}")
+
+
+
+
+
+
+
+
+
+
+
+import pandas as pd
+import xml.etree.ElementTree as ET
+import datetime
+import os
+
+# Ensure this path matches your PowerShell output
+file_path = os.path.join(os.path.expanduser("~"), "Downloads", "Qualys_Retail_Assets_2025.csv")
+
+try:
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+    assets = []
+    
+    for host in root.findall(".//HOST"):
+        assets.append({
+            "ID": host.findtext("ID"),
+            "IP": host.findtext("IP"),
+            "DNS": host.findtext("DNS"),
+            "OS": host.findtext("OS"),
+            "LAST_ACTIVITY": host.findtext("LAST_ACTIVITY"),
+            "AGENT_STATUS": host.findtext("AGENT_STATUS")
+        })
+
+    df = pd.DataFrame(assets)
+
+    if not df.empty:
+        # Convert to UTC datetime
+        df['LAST_ACTIVITY'] = pd.to_datetime(df['LAST_ACTIVITY'], errors='coerce', utc=True)
+        
+        # 24-Hour Logic
+        now = datetime.datetime.now(datetime.timezone.utc)
+        threshold_24h = now - datetime.timedelta(hours=24)
+
+        # Create 'Status' and 'Hours_Since_Last_Checkin' for more detailed visuals
+        df['Status'] = df['LAST_ACTIVITY'].apply(
+            lambda x: 'Silent' if pd.notnull(x) and x < threshold_24h else 'Active'
+        )
+        
+        # Power BI result
+        dataset = df.copy()
+except Exception as e:
+    # This ensures Power BI shows the error if parsing fails
+    raise Exception(f"Python Error: {e}")
