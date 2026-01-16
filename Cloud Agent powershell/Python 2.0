@@ -22,47 +22,57 @@ $Headers = @{
     "X-Requested-With" = "PowerShell"
 }
 
-# --- Validation and Asset Counting Logic ---
+# --- Configuration ---
 $TagId = "26865192"
-# Endpoint for retrieving tag details
 $ValidationUrl = "https://qualysapi.qg4.apps.qualys.com/qps/rest/2.0/get/am/tag/$TagId"
-# Endpoint for searching/counting assets by Tag ID
-$CountUrl = "https://qualysapi.qg4.apps.qualys.com/qps/rest/2.0/count/am/hostasset"
+$CountUrl      = "https://qualysapi.qg4.apps.qualys.com/qps/rest/2.0/count/am/hostasset"
+$ExportUrl     = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
 
 Write-Host "`nStep 1: Verifying Tag ID ${TagId}..." -ForegroundColor Cyan
 
 try {
-    # 1. Verify Tag Existence and Metadata
+    # 1. Verify Tag Existence
     $response = Invoke-RestMethod -Uri $ValidationUrl -Headers $Headers -Method Get
     $tagData = $response.ServiceResponse.data.Tag
     
     if ($tagData) {
+        $TagName = $tagData.name
         Write-Host "SUCCESS: Tag Validated" -ForegroundColor Green
         Write-Host "--------------------------------------------------" -ForegroundColor Gray
-        Write-Host "Tag Name:    $($tagData.name)" -ForegroundColor Yellow -Bold
-        Write-Host "Created:     $($tagData.created)" -ForegroundColor Gray
+        Write-Host "Tag Name:    $TagName" -ForegroundColor Yellow -Bold
         Write-Host "--------------------------------------------------" -ForegroundColor Gray
 
-        # 2. Count Total Assets associated with this Tag ID
-        Write-Host "Step 2: Counting assets associated with this tag..." -ForegroundColor Cyan
-        
-        $countCriteria = @"
-        <ServiceRequest>
-            <filters>
-                <Criteria field="tagName" operator="EQUALS">$($tagData.name)</Criteria>
-            </filters>
-        </ServiceRequest>
-"@
-        
+        # 2. Count Associated Assets
+        Write-Host "Step 2: Counting assets..." -ForegroundColor Cyan
+        $countCriteria = "<ServiceRequest><filters><Criteria field='tagName' operator='EQUALS'>$TagName</Criteria></filters></ServiceRequest>"
         $countResponse = Invoke-RestMethod -Uri $CountUrl -Headers $Headers -Method Post -Body $countCriteria -ContentType "text/xml"
         $assetCount = $countResponse.ServiceResponse.count
         
-        if ($null -ne $assetCount) {
-            Write-Host "TOTAL ASSETS RETRIEVED: " -NoNewline
-            Write-Host "$assetCount" -ForegroundColor Yellow -Bold
-            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+        Write-Host "TOTAL ASSETS RETRIEVED: " -NoNewline
+        Write-Host "$assetCount" -ForegroundColor Yellow -Bold
+        Write-Host "--------------------------------------------------" -ForegroundColor Gray
+
+        # 3. Download Asset Data
+        if ($assetCount -gt 0) {
+            Write-Host "Step 3: Downloading asset CSV for Power BI..." -ForegroundColor Cyan
+            
+            # Resolve Downloads Path
+            $OutPath = Join-Path $env:USERPROFILE "Downloads\Qualys_Retail_Assets_2025.csv"
+            
+            # Build Export Request (v5.0 path with mandatory CSV headers)
+            $exportQs = "action=list&use_tags=1&tag_set_by=id&tag_set_include=$TagId&show_tags=1"
+            $Headers.Add("Accept", "text/csv")
+            
+            Invoke-WebRequest -Uri "$ExportUrl`?$exportQs" -Headers $Headers -Method Get -OutFile $OutPath -UseBasicParsing
+            
+            if (Test-Path $OutPath) {
+                Write-Host "Download Complete!" -ForegroundColor Green
+                Write-Host "File Location: " -NoNewline
+                Write-Host "$OutPath" -ForegroundColor White
+                Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            }
         } else {
-            Write-Warning "Tag found, but asset count could not be retrieved."
+            Write-Warning "No assets found for this tag. Skipping download."
         }
     } else {
         Write-Host "ERROR: Tag ID ${TagId} not found." -ForegroundColor Red
