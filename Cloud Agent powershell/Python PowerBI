@@ -1,86 +1,58 @@
 import pandas as pd
+import xml.etree.ElementTree as ET
 import datetime
 import os
-import csv
 
-# 1. Locate the file
+# 1. Locate the XML file
+# Even if the file extension is .csv, the content is XML, so we treat it as such
 file_path = os.path.join(os.path.expanduser("~"), "Downloads", "Qualys_Retail_Assets_2025.csv")
 
 try:
-    data_rows = []
-    header = None
+    # 2. Parse the XML structure
+    tree = ET.parse(file_path)
+    root = tree.getroot()
 
-    # 2. Manual Line Parsing to bypass EOF/Quote errors
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        # We use a custom generator to strip out quotes that cause the EOF hang
-        for line in f:
-            # Clean the line: remove leading/trailing whitespace and problematic quotes
-            clean_line = line.strip()
-            
-            # Skip XML/Metadata lines
-            if clean_line.startswith(('<?xml', '<!', '<SIMPLE', '<RESPONSE', '<DATETIME')):
-                continue
-            
-            # Use split manually to avoid the "EOF inside string" logic of pd.read_csv
-            # We split by comma but handle cases where values might have commas inside (if necessary)
-            parts = next(csv.reader([clean_line], skipinitialspace=True))
-            
-            if not header and 'LAST_ACTIVITY' in clean_line:
-                header = parts
-                continue
-            
-            if header and len(parts) == len(header):
-                data_rows.append(parts)
-
-    # 3. Create DataFrame from the manually cleaned rows
-    df = pd.DataFrame(data_rows, columns=header)
-
-    # 4. Date Logic
-    # Qualys format: 2026-01-15T23:52:27Z
-    df['LAST_ACTIVITY'] = pd.to_datetime(df['LAST_ACTIVITY'], errors='coerce', utc=True)
-    df = df.dropna(subset=['LAST_ACTIVITY'])
-
-    # 5. Identify "Silent" vs "Active" (24 Hour Window)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    threshold_24h = now - datetime.timedelta(hours=24)
-
-    # Create the Status column for Power BI visuals
-    df['Status'] = df['LAST_ACTIVITY'].apply(lambda x: 'Silent' if x < threshold_24h else 'Active')
-
-    # 6. Final Clean Output for Power BI
-    # Power BI requires a variable (usually 'df') to be the result
-    final_df = df.copy()
+    # 3. Extract asset data into a list of dictionaries
+    assets = []
     
-    print(f"Success! Filtered {len(final_df)} assets.")
-    print(final_df['Status'].value_counts())
+    # Navigate to the <HOST> tags inside <HOST_LIST>
+    # Path: RESPONSE -> HOST_LIST -> HOST
+    for host in root.findall(".//HOST"):
+        asset_data = {
+            "ID": host.findtext("ID"),
+            "IP": host.findtext("IP"),
+            "DNS": host.findtext("DNS"),
+            "OS": host.findtext("OS"),
+            "LAST_ACTIVITY": host.findtext("LAST_ACTIVITY"),
+            "AGENT_STATUS": host.findtext("AGENT_STATUS")
+        }
+        assets.append(asset_data)
+
+    # 4. Convert to DataFrame
+    df = pd.DataFrame(assets)
+
+    if not df.empty:
+        # 5. Date Logic
+        # Convert LAST_ACTIVITY to datetime (UTC)
+        df['LAST_ACTIVITY'] = pd.to_datetime(df['LAST_ACTIVITY'], errors='coerce', utc=True)
+        
+        # Define the 24-hour threshold
+        now = datetime.datetime.now(datetime.timezone.utc)
+        threshold_24h = now - datetime.timedelta(hours=24)
+
+        # 6. Create the 'Status' column for Power BI visuals
+        df['Status'] = df['LAST_ACTIVITY'].apply(
+            lambda x: 'Silent' if pd.notnull(x) and x < threshold_24h else 'Active'
+        )
+        
+        # Clean up any missing values
+        df['DNS'] = df['DNS'].fillna('Unknown')
+        
+        # Final result table for Power BI
+        # df will be available as a table in the Power BI "Fields" pane
+        print(f"Successfully parsed {len(df)} assets from XML.")
+    else:
+        print("No <HOST> records found in the XML file.")
 
 except Exception as e:
-    print(f"Manual Parsing Error: {e}")
-
-
-<?xml version="1.0" encoding="UTF-8" ?>
-<!DOCTYPE HOST_LIST_OUTPUT SYSTEM "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/dtd/list/output.dtd">
-<HOST_LIST_OUTPUT>
-  <RESPONSE>
-    <DATETIME>2026-01-16T13:42:39Z</DATETIME>
-    <HOST_LIST>
-      <HOST>
-        <ID>64509939</ID>
-        <IP>192.168.58.2</IP>
-        <TRACKING_METHOD>Cloud Agent</TRACKING_METHOD>
-        <NETWORK_ID>0</NETWORK_ID>
-        <DNS><![CDATA[s09195app.stores.cvs.com]]></DNS>
-        <DNS_DATA>
-          <HOSTNAME><![CDATA[s09195app]]></HOSTNAME>
-          <DOMAIN><![CDATA[stores.cvs.com]]></DOMAIN>
-          <FQDN><![CDATA[s09195app.stores.cvs.com]]></FQDN>
-        </DNS_DATA>
-        <OS><![CDATA[Ubuntu Linux 22.04.5]]></OS>
-        <QG_HOSTID><![CDATA[5f8dd604-aab5-477a-9696-9cc661931f45]]></QG_HOSTID>
-        <LAST_BOOT>2025-10-31T11:46:13Z</LAST_BOOT>
-        <SERIAL_NUMBER><![CDATA[MXQ053018Z]]></SERIAL_NUMBER>
-        <HARDWARE_UUID><![CDATA[37393150-3636-584d-5130-35333031385a]]></HARDWARE_UUID>
-        <FIRST_FOUND_DATE>2025-06-10T03:24:59Z</FIRST_FOUND_DATE>
-        <LAST_ACTIVITY>2026-01-16T00:10:47Z</LAST_ACTIVITY>
-        <AGENT_STATUS><![CDATA[Inventory Scan Complete]]></AGENT_STATUS>
-        <CLOUD_AGENT_RUNNING_ON><![CDATA[QAGENT]]></CLOUD_AGENT_RUNNING_ON>
+    print(f"XML Parsing Error: {e}")
