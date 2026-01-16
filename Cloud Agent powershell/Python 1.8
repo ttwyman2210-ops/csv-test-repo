@@ -1,0 +1,87 @@
+# --- Ensure modern TLS ---
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# --- Optimization: Disable progress bar (prevents hanging on large downloads) ---
+$ProgressPreference = 'SilentlyContinue'
+
+# --- Prompt for credentials ---
+$Username = Read-Host "Enter your Qualys API username"
+$SecurePassword = Read-Host "Enter your Qualys API password" -AsSecureString
+
+$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+try {
+    $PlainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    $pair = "${Username}:${PlainPassword}"
+    $encodedCreds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+} finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    $PlainPassword = $null
+    $pair = $null
+}
+
+$Headers = @{
+    Authorization    = "Basic $encodedCreds"
+    "X-Requested-With" = "PowerShell"
+    "Accept"           = "text/csv"
+}
+
+# --- Configuration ---
+$TargetTag = "Retail Store Prod Deployment 2025"
+$BaseUrl = "https://qualysapi.qg4.apps.qualys.com/api/5.0/fo/asset/host/"
+
+# --- Build broad query string ---
+$qs = "action=list" +
+      "&use_tags=1" +
+      "&show_tags=1" +
+      "&tag_set_by=name" +
+      "&tag_include_selector=any" +
+      "&tag_set_include=$([uri]::EscapeDataString($TargetTag))"
+
+$Uri = "$BaseUrl`?$qs"
+
+# --- Resolve Local Paths ---
+try {
+    $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
+} catch {
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
+$RawFile = Join-Path $DownloadsPath "Qualys_Raw_Data.csv"
+$FinalFile = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+Write-Host "Downloading data from Qualys (Streaming to disk to prevent hang)..." -ForegroundColor Cyan
+
+# --- API Request ---
+try {
+    # 1. Stream directly to file (OutFile) to avoid memory issues
+    Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $RawFile -UseBasicParsing
+
+    Write-Host "Download complete. Filtering for '$TargetTag'..." -ForegroundColor Gray
+
+    # 2. Read from disk and filter
+    if (Test-Path $RawFile) {
+        $rawCsv = Import-Csv -Path $RawFile
+        $filteredData = $rawCsv | Where-Object { $_.Tags -like "*$TargetTag*" }
+        
+        $totalCount = ($filteredData | Measure-Object).Count
+
+        if ($totalCount -gt 0) {
+            # 3. Save final filtered version
+            $filteredData | Export-Csv -Path $FinalFile -NoTypeInformation
+            Write-Host "`nSuccess! Filtered data saved to: $FinalFile" -ForegroundColor Green
+            Write-Host "Total Assets Found: " -NoNewline
+            Write-Host "$totalCount" -ForegroundColor Yellow -Bold
+        } else {
+            Write-Warning "No assets found matching the tag: $TargetTag"
+        }
+        
+        # Cleanup raw file
+        Remove-Item $RawFile -ErrorAction SilentlyContinue
+    }
+}
+catch {
+    Write-Host "`nConnection Error." -ForegroundColor Red
+}
+finally {
+    $encodedCreds = $null
+    $ProgressPreference = 'Continue' # Reset preference
+}
