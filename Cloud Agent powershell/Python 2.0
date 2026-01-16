@@ -89,3 +89,11 @@ finally {
     $encodedCreds = $null
     $ProgressPreference = 'Continue'
 }
+
+
+At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:77 char:50
++ ...            Write-Host "Total Assets with Tag ID $TargetTagId: " -NoNe ...
++                                                     ~~~~~~~~~~~~~
+Variable reference is not valid. ':' was not followed by a valid variable name character. Consider using ${} to delimit the name.
+    + CategoryInfo          : ParserError: (:) [], ParseException
+    + FullyQualifiedErrorId : InvalidVariableReferenceWithDrive
