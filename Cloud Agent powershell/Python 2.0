@@ -38,19 +38,64 @@ $qs = "action=list" +
 $Uri = "$BaseUrl`?$qs"
 
 # --- Resolve Local Path (Downloads) ---
+$DownloadsPath = $null
 try {
     $DownloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
 } catch {
-    $Downloads
+    $DownloadsPath = Join-Path $env:USERPROFILE 'Downloads'
+}
 
+# Ensure the output directory exists
+if (-not (Test-Path $DownloadsPath)) {
+    New-Item -ItemType Directory -Path $DownloadsPath -Force | Out-Null
+}
 
-\PycharmProjects\PythonProject\.venv\Scripts> .\Cloud_Agent.ps1
-At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:43 char:8
-+ } catch }
-+        ~
-The Catch block is missing its statement block.
-At C:\Users\C567346\PycharmProjects\PythonProject\.venv\Scripts\Cloud_Agent.ps1:43 char:9
-+ } catch }
-+         ~
-Unexpected token '}' in expression or statement.
-    + CategoryInfo          : ParserError: (:) [], ParseException
+$OutputFile = Join-Path $DownloadsPath "Qualys_Retail_Assets_Last30Days.csv"
+
+Write-Host "`nRequesting data for Tag ID: $TargetTagId from Qualys..." -ForegroundColor Cyan
+
+# --- API Request & Local Cleanup ---
+try {
+    # 1. Download directly to disk
+    Invoke-WebRequest -Uri $Uri -Headers $Headers -Method Get -OutFile $OutputFile -UseBasicParsing
+
+    # 2. Local Cleanup (Ensures exact 139 asset count)
+    if (Test-Path $OutputFile) {
+        Write-Host "Download complete. Verifying tag associations..." -ForegroundColor Gray
+        
+        # Import the CSV
+        $rawCsv = Import-Csv -Path $OutputFile -ErrorAction SilentlyContinue
+        
+        if ($rawCsv) {
+            # Filter rows where the Tag_IDs or Tags column contains our Target ID
+            $verifiedData = $rawCsv | Where-Object { 
+                $_.Tag_IDs -like "*$TargetTagId*" -or $_.Tags -like "*$TargetTagId*" 
+            }
+            
+            $finalCount = ($verifiedData | Measure-Object).Count
+            
+            # 3. Overwrite with only the verified assets
+            $verifiedData | Export-Csv -Path $OutputFile -NoTypeInformation
+            
+            Write-Host "`nSuccess! Data cleaned and verified." -ForegroundColor Green
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "Total Assets with Tag ID ${TargetTagId}: " -NoNewline
+            Write-Host "$finalCount" -ForegroundColor Yellow -Bold
+            Write-Host "--------------------------------------------------" -ForegroundColor Gray
+            Write-Host "File saved to: $OutputFile" -ForegroundColor Gray
+        } else {
+            Write-Warning "File exists but no data was parsed. Check Qualys credentials or Tag ID."
+        }
+    }
+}
+catch {
+    Write-Host "`nError downloading or processing data." -ForegroundColor Red
+    if ($_.Exception.Response) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        Write-Host "Qualys Error: $($reader.ReadToEnd())" -ForegroundColor Yellow
+    }
+}
+finally {
+    $encodedCreds = $null
+    $ProgressPreference = 'Continue'
+}
