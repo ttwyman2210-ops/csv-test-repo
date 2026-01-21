@@ -1,59 +1,56 @@
-import csv
+import pandas as pd
 import os
 
-def compare_csv_data(file_path):
-    # Initialize sets to store (IP, Hostname) pairs
-    # Sets are used because they handle uniqueness and comparison efficiently
-    dataset_1 = set()
-    dataset_2 = set()
-
-    # Check if the file exists before attempting to open it
+def compare_csv_to_table(file_path):
+    # Check if the file exists on the local machine
     if not os.path.exists(file_path):
-        print(f"File not found at: {file_path}")
+        print(f"Error: File not found at {file_path}")
         return
 
-    # Open the CSV file for reading
-    with open(file_path, mode='r', newline='', encoding='utf-8') as csvfile:
-        # Using DictReader - ensure your CSV headers are 'IP1', 'Hostname1', 'IP2', 'Hostname2'
-        # If your CSV uses tabs instead of commas, add: delimiter='\t'
-        reader = csv.DictReader(csvfile)
+    # Load the CSV file into a pandas DataFrame
+    # This automatically handles headers and column organization
+    try:
+        df = pd.read_csv(file_path)
         
-        # Iterate through each row and group the pairs as immutable tuples
-        for row in reader:
-            # Process Dataset 1 (Columns IP1 and Hostname1)
-            if row.get('IP1') and row.get('Hostname1'):
-                pair1 = (row['IP1'].strip(), row['Hostname1'].strip())
-                dataset_1.add(pair1)
-            
-            # Process Dataset 2 (Columns IP2 and Hostname2)
-            if row.get('IP2') and row.get('Hostname2'):
-                pair2 = (row['IP2'].strip(), row['Hostname2'].strip())
-                dataset_2.add(pair2)
+        # Create sets of (IP, Hostname) tuples for both datasets
+        # This keeps the pairs associated as requested
+        set_1 = set(zip(df['IP1'].strip(), df['Hostname1'].strip()))
+        set_2 = set(zip(df['IP2'].strip(), df['Hostname2'].strip()))
+    except Exception as e:
+        # Fallback if manual column names are needed or if stripping fails on NaNs
+        df = pd.read_csv(file_path).fillna('Missing')
+        set_1 = set(zip(df['IP1'], df['Hostname1']))
+        set_2 = set(zip(df['IP2'], df['Hostname2']))
 
-    # Perform set subtraction to find differences
-    # unique_to_1 contains pairs in set 1 but not in set 2
-    unique_to_1 = dataset_1 - dataset_2
-    # unique_to_2 contains pairs in set 2 but not in set 1
-    unique_to_2 = dataset_2 - dataset_1
+    # Use set operations to find unique pairs
+    unique_1 = list(set_1 - set_2)
+    unique_2 = list(set_2 - set_1)
 
-    # Print the results for Dataset 1
-    print(f"{'='*30}")
-    print(f"Unique to Dataset 1 ({len(unique_to_1)} found):")
-    print(f"{'='*30}")
-    for ip, host in sorted(unique_to_1):
-        print(f"IP: {ip:15} | Hostname: {host}")
+    # Convert the results into DataFrames for pretty table display
+    df_unique_1 = pd.DataFrame(unique_1, columns=['IP', 'Hostname'])
+    df_unique_2 = pd.DataFrame(unique_2, columns=['IP', 'Hostname'])
 
-    # Print the results for Dataset 2
-    print(f"\n{'='*30}")
-    print(f"Unique to Dataset 2 ({len(unique_to_2)} found):")
-    print(f"{'='*30}")
-    for ip, host in sorted(unique_to_2):
-        print(f"IP: {ip:15} | Hostname: {host}")
+    # Display results in a clean table format
+    print("\n" + "="*40)
+    print("DATASET 1: UNIQUE ITEMS NOT IN DATASET 2")
+    print("="*40)
+    if not df_unique_1.empty:
+        print(df_unique_1.to_string(index=False))
+    else:
+        print("No unique items found.")
+
+    print("\n" + "="*40)
+    print("DATASET 2: UNIQUE ITEMS NOT IN DATASET 1")
+    print("="*40)
+    if not df_unique_2.empty:
+        print(df_unique_2.to_string(index=False))
+    else:
+        print("No unique items found.")
 
 if __name__ == "__main__":
-    # Define the full path to your CSV file on Windows
-    # Note the 'r' prefix for a raw string to handle backslashes correctly
+    # Define your local file path
+    # Remember 'r' prefix for Windows paths
     target_file = r'C:\User\Name\data_sets.csv'
     
-    # Execute the comparison function
-    compare_csv_data(target_file)
+    # Execute the comparison and table display
+    compare_csv_to_table(target_file)
