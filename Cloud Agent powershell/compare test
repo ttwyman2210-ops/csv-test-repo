@@ -1,0 +1,53 @@
+import pandas as pd
+import os
+
+def compare_and_export(file_path):
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        print(f"Error: File not found at {file_path}")
+        return
+
+    # Load the CSV data
+    df = pd.read_csv(file_path)
+
+    # 1. Define Pairs: Columns A+B (index 0,1) and D+E (index 3,4)
+    # Using zip and set to find unique combinations
+    try:
+        set_1 = set(zip(df.iloc[:, 0].astype(str).str.strip(), df.iloc[:, 1].astype(str).str.strip()))
+        set_2 = set(zip(df.iloc[:, 3].astype(str).str.strip(), df.iloc[:, 4].astype(str).str.strip()))
+    except IndexError:
+        print("Error: CSV must have at least 5 columns (A, B, C, D, E).")
+        return
+
+    # 2. Identify Unique Data
+    unique_1 = list(set_1 - set_2)
+    unique_2 = list(set_2 - set_1)
+
+    # 3. Convert to DataFrames for Display and Export
+    df_unique_1 = pd.DataFrame(unique_1, columns=['IP', 'Hostname'])
+    df_unique_2 = pd.DataFrame(unique_2, columns=['IP', 'Hostname'])
+
+    # 4. Display Table Results
+    print("\n--- Unique to Columns A+B ---")
+    print(df_unique_1.to_string(index=False) if not df_unique_1.empty else "No unique data.")
+    
+    print("\n--- Unique to Columns D+E ---")
+    print(df_unique_2.to_string(index=False) if not df_unique_2.empty else "No unique data.")
+
+    # 5. Export to CSV
+    # We save these in the same directory as the input file
+    output_dir = os.path.dirname(file_path)
+    
+    path_1 = os.path.join(output_dir, "unique_dataset_1.csv")
+    path_2 = os.path.join(output_dir, "unique_dataset_2.csv")
+
+    df_unique_1.to_csv(path_1, index=False)
+    df_unique_2.to_csv(path_2, index=False)
+
+    print(f"\n[+] Exported unique results to:\n 1. {path_1}\n 2. {path_2}")
+
+if __name__ == "__main__":
+    # Your local Windows file path
+    target_file = r'C:\User\Name\data_sets.csv'
+    
+    compare_and_export(target_file)
