@@ -1,56 +1,57 @@
 import pandas as pd
 import os
 
-def compare_csv_to_table(file_path):
-    # Check if the file exists on the local machine
+def compare_columns_by_position(file_path):
+    # Check if the file exists locally
     if not os.path.exists(file_path):
         print(f"Error: File not found at {file_path}")
         return
 
-    # Load the CSV file into a pandas DataFrame
-    # This automatically handles headers and column organization
+    # Load the CSV
+    # header=None if your CSV starts immediately with data, otherwise leave default
+    df = pd.read_csv(file_path)
+
+    # Group Column A (index 0) and B (index 1) as Dataset 1
+    # Group Column D (index 3) and E (index 4) as Dataset 2
+    # We use .iloc to select by numeric position
     try:
-        df = pd.read_csv(file_path)
-        
-        # Create sets of (IP, Hostname) tuples for both datasets
-        # This keeps the pairs associated as requested
-        set_1 = set(zip(df['IP1'].strip(), df['Hostname1'].strip()))
-        set_2 = set(zip(df['IP2'].strip(), df['Hostname2'].strip()))
-    except Exception as e:
-        # Fallback if manual column names are needed or if stripping fails on NaNs
-        df = pd.read_csv(file_path).fillna('Missing')
-        set_1 = set(zip(df['IP1'], df['Hostname1']))
-        set_2 = set(zip(df['IP2'], df['Hostname2']))
+        # Extract pairs and drop rows where either value in the pair is missing
+        set_1 = set(filter(all, zip(df.iloc[:, 0], df.iloc[:, 1])))
+        set_2 = set(filter(all, zip(df.iloc[:, 3], df.iloc[:, 4])))
+    except IndexError:
+        print("Error: The CSV does not have enough columns (Need at least 5 columns: A, B, C, D, E)")
+        return
 
-    # Use set operations to find unique pairs
-    unique_1 = list(set_1 - set_2)
-    unique_2 = list(set_2 - set_1)
+    # Identify unique combinations
+    # Found in A+B but not in D+E
+    unique_to_left = set_1 - set_2
+    # Found in D+E but not in A+B
+    unique_to_right = set_2 - set_1
 
-    # Convert the results into DataFrames for pretty table display
-    df_unique_1 = pd.DataFrame(unique_1, columns=['IP', 'Hostname'])
-    df_unique_2 = pd.DataFrame(unique_2, columns=['IP', 'Hostname'])
+    # Convert results to DataFrames for a clean table view
+    df_left = pd.DataFrame(list(unique_to_left), columns=['IP', 'Hostname'])
+    df_right = pd.DataFrame(list(unique_to_right), columns=['IP', 'Hostname'])
 
-    # Display results in a clean table format
-    print("\n" + "="*40)
-    print("DATASET 1: UNIQUE ITEMS NOT IN DATASET 2")
-    print("="*40)
-    if not df_unique_1.empty:
-        print(df_unique_1.to_string(index=False))
+    # Display results
+    print("\n" + "╔" + "═"*48 + "╗")
+    print("║ UNIQUE IN COLUMNS A+B (Not found in D+E)       ║")
+    print("╚" + "═"*48 + "╝")
+    if not df_left.empty:
+        print(df_left.to_string(index=False))
     else:
-        print("No unique items found.")
+        print("No unique combinations found.")
 
-    print("\n" + "="*40)
-    print("DATASET 2: UNIQUE ITEMS NOT IN DATASET 1")
-    print("="*40)
-    if not df_unique_2.empty:
-        print(df_unique_2.to_string(index=False))
+    print("\n" + "╔" + "═"*48 + "╗")
+    print("║ UNIQUE IN COLUMNS D+E (Not found in A+B)       ║")
+    print("╚" + "═"*48 + "╝")
+    if not df_right.empty:
+        print(df_right.to_string(index=False))
     else:
-        print("No unique items found.")
+        print("No unique combinations found.")
 
 if __name__ == "__main__":
-    # Define your local file path
-    # Remember 'r' prefix for Windows paths
+    # Define the Windows file path
     target_file = r'C:\User\Name\data_sets.csv'
     
-    # Execute the comparison and table display
-    compare_csv_to_table(target_file)
+    # Run the comparison
+    compare_columns_by_position(target_file)
