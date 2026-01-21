@@ -1,46 +1,59 @@
 import csv
+import os
 
-def compare_datasets(file_path):
-    # Lists to store our key-value pairs (IP, Hostname)
-    set_a = set()
-    set_b = set()
+def compare_csv_data(file_path):
+    # Initialize sets to store (IP, Hostname) pairs
+    # Sets are used because they handle uniqueness and comparison efficiently
+    dataset_1 = set()
+    dataset_2 = set()
 
-    try:
-        with open(file_path, mode='r', newline='') as csvfile:
-            # Using DictReader to handle potential column headers
-            # Note: Adjust fieldnames if your CSV doesn't have headers
-            reader = csv.DictReader(csvfile)
-            
-            for row in reader:
-                # Store Dataset 1 as a tuple (IP, Hostname) in set_a
-                # We strip whitespace to ensure clean matching
-                if row['IP1'] and row['Hostname1']:
-                    set_a.add((row['IP1'].strip(), row['Hostname1'].strip()))
-                
-                # Store Dataset 2 as a tuple (IP, Hostname) in set_b
-                if row['IP2'] and row['Hostname2']:
-                    set_b.add((row['IP2'].strip(), row['Hostname2'].strip()))
+    # Check if the file exists before attempting to open it
+    if not os.path.exists(file_path):
+        print(f"File not found at: {file_path}")
+        return
 
-        # Find items in Dataset 1 that are NOT in Dataset 2
-        unique_to_a = set_a - set_b
+    # Open the CSV file for reading
+    with open(file_path, mode='r', newline='', encoding='utf-8') as csvfile:
+        # Using DictReader - ensure your CSV headers are 'IP1', 'Hostname1', 'IP2', 'Hostname2'
+        # If your CSV uses tabs instead of commas, add: delimiter='\t'
+        reader = csv.DictReader(csvfile)
         
-        # Find items in Dataset 2 that are NOT in Dataset 1
-        unique_to_b = set_b - set_a
+        # Iterate through each row and group the pairs as immutable tuples
+        for row in reader:
+            # Process Dataset 1 (Columns IP1 and Hostname1)
+            if row.get('IP1') and row.get('Hostname1'):
+                pair1 = (row['IP1'].strip(), row['Hostname1'].strip())
+                dataset_1.add(pair1)
+            
+            # Process Dataset 2 (Columns IP2 and Hostname2)
+            if row.get('IP2') and row.get('Hostname2'):
+                pair2 = (row['IP2'].strip(), row['Hostname2'].strip())
+                dataset_2.add(pair2)
 
-        # Present the unique data
-        print("--- Unique to Dataset 1 ---")
-        for ip, host in unique_to_a:
-            print(f"IP: {ip} | Hostname: {host}")
+    # Perform set subtraction to find differences
+    # unique_to_1 contains pairs in set 1 but not in set 2
+    unique_to_1 = dataset_1 - dataset_2
+    # unique_to_2 contains pairs in set 2 but not in set 1
+    unique_to_2 = dataset_2 - dataset_1
 
-        print("\n--- Unique to Dataset 2 ---")
-        for ip, host in unique_to_b:
-            print(f"IP: {ip} | Hostname: {host}")
+    # Print the results for Dataset 1
+    print(f"{'='*30}")
+    print(f"Unique to Dataset 1 ({len(unique_to_1)} found):")
+    print(f"{'='*30}")
+    for ip, host in sorted(unique_to_1):
+        print(f"IP: {ip:15} | Hostname: {host}")
 
-    except FileNotFoundError:
-        print("Error: The CSV file was not found.")
-    except KeyError:
-        print("Error: Ensure CSV headers match 'IP1', 'Hostname1', 'IP2', 'Hostname2'.")
+    # Print the results for Dataset 2
+    print(f"\n{'='*30}")
+    print(f"Unique to Dataset 2 ({len(unique_to_2)} found):")
+    print(f"{'='*30}")
+    for ip, host in sorted(unique_to_2):
+        print(f"IP: {ip:15} | Hostname: {host}")
 
 if __name__ == "__main__":
-    # Call the function with your filename
-    compare_datasets('data.csv')
+    # Define the full path to your CSV file on Windows
+    # Note the 'r' prefix for a raw string to handle backslashes correctly
+    target_file = r'C:\User\Name\data_sets.csv'
+    
+    # Execute the comparison function
+    compare_csv_data(target_file)
