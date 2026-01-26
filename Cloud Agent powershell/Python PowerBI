@@ -110,3 +110,60 @@ try:
 except Exception as e:
     # This ensures Power BI shows the error if parsing fails
     raise Exception(f"Python Error: {e}")
+
+
+
+new edit
+
+import pandas as pd
+import xml.etree.ElementTree as ET
+import datetime
+import os
+
+# Path to the file (content is XML even if extension is .csv)
+file_path = os.path.join(os.path.expanduser("~"), "Downloads", "Qualys_Retail_Assets_2025.csv")
+
+try:
+    # 1) Parse XML
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+
+    # 2) Extract <HOST> records
+    assets = []
+    for host in root.findall(".//HOST"):
+        assets.append({
+            "ID": host.findtext("ID"),
+            "IP": host.findtext("IP"),
+            "DNS": host.findtext("DNS"),
+            "OS": host.findtext("OS"),
+            "LAST_ACTIVITY": host.findtext("LAST_ACTIVITY"),
+            "AGENT_STATUS": host.findtext("AGENT_STATUS")
+        })
+
+    # 3) Convert to DataFrame
+    df = pd.DataFrame(assets)
+
+    if df.empty:
+        raise Exception("No <HOST> records found in the XML file.")
+
+    # 4) Convert LAST_ACTIVITY to datetime (UTC)
+    df["LAST_ACTIVITY"] = pd.to_datetime(df["LAST_ACTIVITY"], errors="coerce", utc=True)
+
+    # 5) 24-hour threshold logic
+    now = datetime.datetime.now(datetime.timezone.utc)
+    threshold_24h = now - datetime.timedelta(hours=24)
+
+    # 6) Create status column
+    df["Status"] = df["LAST_ACTIVITY"].apply(
+        lambda x: "Silent" if pd.notnull(x) and x < threshold_24h else "Active"
+    )
+
+    # 7) Clean up DNS blanks
+    df["DNS"] = df["DNS"].fillna("Unknown")
+
+    # 8) Provide output to Power BI
+    dataset = df.copy()
+
+except Exception as e:
+    # IMPORTANT: correct f-string syntax uses {e}, not (e)
+    raise Exception(f"Python Error: {e}")
