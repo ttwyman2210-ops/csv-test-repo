@@ -1,0 +1,7 @@
+python_dict_original = {"Greg" : 15, "Alice" : 20, "Bob" : [20, 50]}
+ 
+python_dict_copy = python_dict_original.copy()
+ 
+python_dict_original["Bob"][1] = 55
+ 
+python_dict_copy
