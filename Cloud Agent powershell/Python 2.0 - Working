@@ -39,7 +39,7 @@ try {
         $TagName = $tagData.name
         Write-Host "SUCCESS: Tag Validated" -ForegroundColor Green
         Write-Host "--------------------------------------------------" -ForegroundColor Gray
-        Write-Host "Tag Name:    $TagName" -ForegroundColor Yellow -Bold
+        Write-Host "Tag Name:    $TagName" -ForegroundColor Yellow 
         Write-Host "--------------------------------------------------" -ForegroundColor Gray
 
         # 2. Count Associated Assets
@@ -49,7 +49,7 @@ try {
         $assetCount = $countResponse.ServiceResponse.count
         
         Write-Host "TOTAL ASSETS RETRIEVED: " -NoNewline
-        Write-Host "$assetCount" -ForegroundColor Yellow -Bold
+        Write-Host "$assetCount" -ForegroundColor Yellow 
         Write-Host "--------------------------------------------------" -ForegroundColor Gray
 
         # 3. Download Asset Data
