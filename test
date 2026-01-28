@@ -1,7 +1,9 @@
-python_dict_original = {"Greg" : 15, "Alice" : 20, "Bob" : [20, 50]}
- 
-python_dict_copy = python_dict_original.copy()
- 
-python_dict_original["Bob"][1] = 55
- 
-python_dict_copy
+import os
+import pandas as pd
+
+file_path = r"C:\Users\C567346\Downloads\Qualys_Retail_Assets_2025.csv"
+
+dataset = pd.DataFrame([{
+ "file_exists": os.path.exists(file_path),
+ "file_path": file_path
+}])
