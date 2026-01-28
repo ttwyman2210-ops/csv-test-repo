@@ -7,3 +7,14 @@ dataset = pd.DataFrame([{
  "file_exists": os.path.exists(file_path),
  "file_path": file_path
 }])
+
+
+Details: "ADO.NET: Python script error.
+<pi>Could not find platform independent libraries <prefix>
+Fatal Python error: Failed to import encodings module
+Python runtime state: core initialized
+ModuleNotFoundError: No module named 'encodings'
+
+Current thread 0x00006b84 (most recent call first):
+  <no Python frame>
+</pi>"
