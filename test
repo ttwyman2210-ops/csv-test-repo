@@ -18,3 +18,20 @@ ModuleNotFoundError: No module named 'encodings'
 Current thread 0x00006b84 (most recent call first):
   <no Python frame>
 </pi>"
+
+
+% Active vs Silent :=
+VAR Numerator =
+    DISTINCTCOUNT(Assets[AssetID])
+VAR Denominator =
+    CALCULATE(
+        DISTINCTCOUNT(Assets[AssetID]),
+        ALL(Assets[Status]),
+        Assets[Status] IN {"Active", "Silent"}
+    )
+RETURN
+IF(
+    SELECTEDVALUE(Assets[Status]) IN {"Active", "Silent"},
+    DIVIDE(Numerator, Denominator),
+    BLANK()
+)
