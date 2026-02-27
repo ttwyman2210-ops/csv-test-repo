@@ -1,0 +1,58 @@
+import pandas as pd
+import os
+
+
+def compare_columns_by_position(file_path):
+    # Check if the file exists locally
+    if not os.path.exists(file_path):
+        print(f"Error: File not found at {file_path}")
+        return
+
+    # Load the CSV
+    # header=None if your CSV starts immediately with data, otherwise leave default
+    df = pd.read_csv(file_path)
+
+    # Group Column A (index 0) and B (index 1) as Dataset 1
+    # Group Column D (index 3) and E (index 4) as Dataset 2
+    # We use .iloc to select by numeric position
+    try:
+        # Extract pairs and drop rows where either value in the pair is missing
+        set_1 = set(filter(all, zip(df.iloc[:, 0], df.iloc[:, 1])))
+        set_2 = set(filter(all, zip(df.iloc[:, 3], df.iloc[:, 4])))
+    except IndexError:
+        print("Error: The CSV does not have enough columns (Need at least 5 columns: A, B, C, D, E)")
+        return
+
+    # Identify unique combinations
+    # Found in A+B but not in D+E
+    unique_to_left = set_1 - set_2
+    # Found in D+E but not in A+B
+    unique_to_right = set_2 - set_1
+
+    # Convert results to DataFrames for a clean table view
+    df_left = pd.DataFrame(list(unique_to_left), columns=['IP', 'Hostname'])
+    df_right = pd.DataFrame(list(unique_to_right), columns=['IP', 'Hostname'])
+
+    # Display results
+    print("\n" + "╔" + "═" * 48 + "╗")
+    print("║ UNIQUE IN Dataset 1 (Not found in Dataset 2)   ║")
+    print("╚" + "═" * 48 + "╝")
+    if not df_left.empty:
+        print(df_left.to_string(index=False))
+    else:
+        print("No unique combinations found.")
+    print("\n" + "╔" + "═" * 48 + "╗")
+    print("║ UNIQUE IN Dataset2 (Not found in Dataset 1)    ║")
+    print("╚" + "═" * 48 + "╝")
+    if not df_right.empty:
+        print(df_right.to_string(index=False))
+    else:
+        print("No unique combinations found.")
+
+
+if __name__ == "__main__":
+    # Define the Windows file path
+    target_file = r'C:\Users\Username\Documents\Compare_Py.csv'
+
+    # Run the comparison
+    compare_columns_by_position(target_file)
