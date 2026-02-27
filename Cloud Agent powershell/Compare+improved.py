@@ -29,7 +29,7 @@ def compare_columns_by_position(file_path, export_to_csv=False):
     # Found in D+E but not in A+B
     unique_to_right = set_2 - set_1
 
-    # NEW: Identify common combinations found in both datasets
+    # Identify common combinations found in both datasets
     common_in_both = set_1 & set_2
 
     # Convert results to DataFrames for a clean table view
@@ -42,48 +42,4 @@ def compare_columns_by_position(file_path, export_to_csv=False):
     print("║ UNIQUE IN Dataset 1 (Not found in Dataset 2)   ║")
     print("╚" + "═" * 48 + "╝")
     if not df_left.empty:
-        print(df_left.to_string(index=False))
-    else:
-        print("No unique combinations found.")
-
-    print("\n" + "╔" + "═" * 48 + "╗")
-    print("║ UNIQUE IN Dataset 2 (Not found in Dataset 1)   ║")
-    print("╚" + "═" * 48 + "╝")
-    if not df_right.empty:
-        print(df_right.to_string(index=False))
-    else:
-        print("No unique combinations found.")
-
-    # NEW: Display common results
-    print("\n" + "╔" + "═" * 48 + "╗")
-    print("║ COMMON IN BOTH Datasets 1 and 2                ║")
-    print("╚" + "═" * 48 + "╝")
-    if not df_common.empty:
-        print(df_common.to_string(index=False))
-    else:
-        print("No common combinations found.")
-
-    # NEW: Optional CSV export to local Downloads folder
-    if export_to_csv:
-        # Get user's Downloads folder path dynamically
-        downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
-
-        # Ensure the folder exists
-        if not os.path.exists(downloads_folder):
-            print(f"Error: Downloads folder not found at {downloads_folder}")
-            return
-
-        # Export each DataFrame to CSV
-        df_left.to_csv(os.path.join(downloads_folder, 'unique_dataset1.csv'), index=False)
-        df_right.to_csv(os.path.join(downloads_folder, 'unique_dataset2.csv'), index=False)
-        df_common.to_csv(os.path.join(downloads_folder, 'common_both_datasets.csv'), index=False)
-
-        print(f"\nCSVs exported to: {downloads_folder}")
-
-
-if __name__ == "__main__":
-    # Define the Windows file path
-    target_file = r'C:\Users\Username\Documents\Compare_Py.csv'  # Adjust to your actual path
-
-    # Run the comparison with CSV export enabled (set to False if you don't want export)
-    compare_columns_by_position(target_file, export_to_csv=True)
+        print(df_left
