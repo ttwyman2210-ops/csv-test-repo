@@ -1,2 +1,4 @@
 curl --anyauth --user <administrativeuser> -X GET -i "http://<ip_address>:8002/manage/v2/users/qualys_scan/properties"
 curl --anyauth --user <administrativeuser> -X GET -i "http://<ip_address>:8002/manage/v2/roles/qualys_role/properties"
+
+curl --basic --user "<administrativeuser>:<password>" -X GET -i "http://<ip_address>:8002/manage/v2/users/qualys_scan/properties"
