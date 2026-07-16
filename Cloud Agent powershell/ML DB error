@@ -2,3 +2,35 @@ curl --anyauth --user <administrativeuser> -X GET -i "http://<ip_address>:8002/m
 curl --anyauth --user <administrativeuser> -X GET -i "http://<ip_address>:8002/manage/v2/roles/qualys_role/properties"
 
 curl --basic --user "<administrativeuser>:<password>" -X GET -i "http://<ip_address>:8002/manage/v2/users/qualys_scan/properties"
+
+End user checklist
+The end user needs:
+Local admin rights on the server.
+The QualysCloudAgent.exe installer.
+The correct:
+CustomerId
+ActivationId
+WebServiceUri
+Internet/proxy access from the server to Qualys over HTTPS/443.
+PowerShell or Command Prompt opened as Administrator.
+ 
+Folder requirement?
+No special folder is required.
+The command only needs to match where the installer is located.
+Example if the installer is here:``` text
+D:\Tools\QualysCloudAgent.exe
+```
+
+Then the command should start with:``` powershell
+D:\Tools\QualysCloudAgent.exe
+```
+
+Example:``` powershell
+D:\Tools\QualysCloudAgent.exe CustomerId="{YOUR-CUSTOMER-ID}" ActivationId="{YOUR-ACTIVATION-ID}" WebServiceUri="https://<your-qualys-platform-url>/CloudAgent" /quiet
+```
+
+ 
+Short answer
+Yes, the installer must be on the server or reachable by the server.
+No, it does not need to be in a certain folder.
+The user just needs to run the command using the correct path to the installer.
