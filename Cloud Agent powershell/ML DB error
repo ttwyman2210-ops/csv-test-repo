@@ -29,6 +29,9 @@ Example:``` powershell
 D:\Tools\QualysCloudAgent.exe CustomerId="{YOUR-CUSTOMER-ID}" ActivationId="{YOUR-ACTIVATION-ID}" WebServiceUri="https://<your-qualys-platform-url>/CloudAgent" /quiet
 ```
 
+https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/export-clixml?view=powershell-7.6
+
+https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/import-clixml?view=powershell-7.6
  
 Short answer
 Yes, the installer must be on the server or reachable by the server.
