@@ -32,6 +32,8 @@ D:\Tools\QualysCloudAgent.exe CustomerId="{YOUR-CUSTOMER-ID}" ActivationId="{YOU
 https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/export-clixml?view=powershell-7.6
 
 https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/import-clixml?view=powershell-7.6
+
+https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/convertfrom-securestring?view=powershell-7.6
  
 Short answer
 Yes, the installer must be on the server or reachable by the server.
